@@ -8,6 +8,7 @@ import { fileExists } from "../../utils/files.js";
 import { createNoteNotFoundError, handleFsError } from "../../utils/errors.js";
 import { createToolResponse, formatFileResult } from "../../utils/responses.js";
 import { createTool } from "../../utils/tool-factory.js";
+import { parseNote, stringifyNote } from "../../utils/tags.js";
 
 // Schema for edit operations
 const editSchema = z.object({
@@ -77,18 +78,22 @@ async function editNote(
           const existingContent = await fs.readFile(fullPath, "utf-8");
 
           // Prepare new content based on operation
-          let newContent: string;
+          let finalContentToWrite: string;
           if (operation === 'append') {
-            newContent = existingContent.trim() + (existingContent.trim() ? '\n\n' : '') + content;
+            // Append: Add new content after existing content
+            finalContentToWrite = existingContent.trim() + (existingContent.trim() ? '\n\n' : '') + content;
           } else if (operation === 'prepend') {
-            newContent = content + (existingContent.trim() ? '\n\n' : '') + existingContent.trim();
+            // Prepend: Add new content before existing content
+            finalContentToWrite = content + (existingContent.trim() ? '\n\n' : '') + existingContent.trim();
           } else {
-            // replace
-            newContent = content;
+            // Replace: Parse existing, replace content body, keep frontmatter
+            const parsedNote = parseNote(existingContent);
+            parsedNote.content = content; // Replace only the content part
+            finalContentToWrite = stringifyNote(parsedNote); // Combine original frontmatter with new content
           }
 
-          // Write the new content
-          await fs.writeFile(fullPath, newContent);
+          // Write the final content
+          await fs.writeFile(fullPath, finalContentToWrite);
 
           // Clean up backup on success
           await fs.unlink(backupPath);
