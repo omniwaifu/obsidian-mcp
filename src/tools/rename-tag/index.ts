@@ -14,6 +14,7 @@ import {
   fileExists
 } from "../../utils/files.js";
 import { createTool } from "../../utils/tool-factory.js";
+import { createToolResponse } from "../../utils/responses.js";
 
 // Input validation schema with descriptions
 const schema = z.object({
@@ -474,12 +475,8 @@ Examples:
         });
       }
 
-      return {
-        content: [{
-          type: 'text',
-          text: message.trim()
-        }]
-      };
+      // Use createToolResponse for consistency
+      return createToolResponse(message.trim());
     }
   }, vaults);
 }

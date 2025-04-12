@@ -4,6 +4,7 @@ import path from "path";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { createTool } from "../../utils/tool-factory.js";
 import { validateVaultPath } from "../../utils/path.js";
+import { createToolResponse } from "../../utils/responses.js";
 
 // Input validation schema with descriptions
 const schema = z.object({
@@ -69,14 +70,8 @@ export function createCreateDirectoryTool(vaults: Map<string, string>) {
     schema,
     handler: async (args, vaultPath, _vaultName) => {
       const createdPath = await createDirectory(vaultPath, args.path, args.recursive ?? true);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Successfully created directory at: ${createdPath}`
-          }
-        ]
-      };
+      const message = `Successfully created directory at: ${createdPath}`;
+      return createToolResponse(message);
     }
   }, vaults);
 }

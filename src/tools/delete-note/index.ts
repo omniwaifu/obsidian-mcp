@@ -7,6 +7,7 @@ import { fileExists, ensureDirectory } from "../../utils/files.js";
 import { updateVaultLinks } from "../../utils/links.js";
 import { createNoteNotFoundError, handleFsError } from "../../utils/errors.js";
 import { createTool } from "../../utils/tool-factory.js";
+import { createToolResponse } from "../../utils/responses.js";
 
 // Input validation schema with descriptions
 const schema = z.object({
@@ -139,14 +140,7 @@ export function createDeleteNoteTool(vaults: Map<string, string>) {
         permanent: args.permanent 
       });
       
-      return {
-        content: [
-          {
-            type: "text",
-            text: resultMessage
-          }
-        ]
-      };
+      return createToolResponse(resultMessage);
     }
   }, vaults);
 }

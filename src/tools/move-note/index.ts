@@ -7,6 +7,7 @@ import { fileExists, ensureDirectory } from "../../utils/files.js";
 import { updateVaultLinks } from "../../utils/links.js";
 import { createNoteExistsError, createNoteNotFoundError, handleFsError } from "../../utils/errors.js";
 import { createTool } from "../../utils/tool-factory.js";
+import { createToolResponse } from "../../utils/responses.js";
 
 // Input validation schema with descriptions
 const schema = z.object({
@@ -84,14 +85,7 @@ export function createMoveNoteTool(vaults: Map<string, string>) {
       
       const resultMessage = await moveNote(argsWithExt, vaultPath);
       
-      return {
-        content: [
-          {
-            type: "text",
-            text: resultMessage
-          }
-        ]
-      };
+      return createToolResponse(resultMessage);
     }
   }, vaults);
 }
