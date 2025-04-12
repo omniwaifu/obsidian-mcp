@@ -164,10 +164,3 @@ export function formatSearchResult(result: SearchOperationResult): string {
   
   return parts.join('\n');
 }
-
-/**
- * Creates a standardized error response
- */
-export function createErrorResponse(error: Error): ToolResponse {
-  return createToolResponse(`Error: ${error.message}`);
-}

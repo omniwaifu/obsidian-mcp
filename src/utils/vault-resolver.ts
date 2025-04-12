@@ -54,11 +54,4 @@ export class VaultResolver {
     };
   }
     */
-
-  /**
-   * Returns a list of available vault names
-   */
-  getAvailableVaults(): string[] {
-    return Array.from(this.vaults.keys());
-  }
 }

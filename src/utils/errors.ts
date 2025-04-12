@@ -48,16 +48,6 @@ export function handleFsError(error: unknown, operation: string): never {
 }
 
 /**
- * Handles Zod validation errors by converting them to McpErrors
- */
-export function handleZodError(error: z.ZodError): never {
-  throw new McpError(
-    ErrorCode.InvalidRequest,
-    `Invalid arguments: ${error.errors.map(e => e.message).join(", ")}`
-  );
-}
-
-/**
  * Creates a standardized error for when a note already exists
  */
 export function createNoteExistsError(path: string): McpError {
