@@ -25,21 +25,34 @@ This MCP has read and write access (if you allow it). Please. PLEASE backup your
 
 ## Installation
 
-The server can be run directly using `node` or via `npx`. The primary way to use this is often via an MCP client like Claude Desktop.
+This server is intended to be run locally and integrated with an MCP client (like Claude Desktop).
 
-**Key Change:** Unlike previous versions that took vault paths as command-line arguments, the server now expects vault configurations via a separate mechanism (usually determined by the client or environment setup). When run directly, it currently **does not accept vault paths as arguments**. The client invoking the server is responsible for providing the vault context for each tool request.
+**Recommended Method:** Run the server directly using `node` after building it.
 
-### Example: Running Directly (for testing/development)
+1.  Clone your fork and navigate into the directory.
+2.  Install dependencies: `bun install`
+3.  Build the server: `bun run build`
+4.  Configure your MCP client to execute the server using `node` and the **absolute path** to the generated `build/main.js` script in your local project directory.
 
-You would typically integrate this server into a larger application or use a client that manages the server process. For direct testing:
+### Example: Running Directly (for debugging)
 
-1.  Build the server: `bun run build`
-2.  Run the server (it will listen on stdio): `bun build/main.js`
-3.  Send JSON-RPC requests to its stdin.
+To run the server directly in your terminal (e.g., for debugging the server itself):
 
-### Example: Claude Desktop Configuration
+```bash
+# Build first if you haven't
+bun run build
 
-Claude Desktop manages the server process and provides the vault context. Configuration is slightly different now:
+# Run using node
+node <absolute-path-to-your-project>/build/main.js
+
+# Or using bun
+bun <absolute-path-to-your-project>/build/main.js
+```
+The server will start, potentially use a default vault configuration if defined in `src/main.ts`, and listen for JSON-RPC messages on standard input/output.
+
+### Example: Claude Desktop Configuration (Using Local Build)
+
+Configure Claude Desktop (or a similar client) to run your specific build:
 
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Windows: `%APPDATA%\\Claude\\claude_desktop_config.json`
@@ -48,26 +61,21 @@ Claude Desktop manages the server process and provides the vault context. Config
 {
     "mcpServers": {
         "obsidian": {
-            // Command to run the server (use npx or direct path after building)
-            "command": "npx", // Or "node",
+            // Use node to run your local build
+            "command": "node",
             "args": [
-                // If using npx:
-                "-y", "obsidian-mcp"
-                // If using node after building:
-                // "<absolute-path-to-obsidian-mcp>/build/main.js"
+                // *** Replace with the ABSOLUTE path to YOUR build/main.js ***
+                "/path/to/your/fork/obsidian-mcp/build/main.js"
             ],
             // IMPORTANT: Vaults are no longer passed as arguments here.
-            // Claude Desktop needs to be updated or configured to provide
-            // the vault context per-request, potentially via UI selection
-            // or automatically based on the active window. This server
-            // relies on the `vault` argument within each tool call.
+            // The client provides vault context via the `vault` argument in tool calls.
+            // Configure the vaults the CLIENT should know about:
              "config": {
-                 // Example (Syntax may vary based on Claude Desktop version):
-                 // Define the vaults Claude Desktop knows about and can offer
-                 // to the server via the `vault` argument in tool calls.
+                 // Example (Syntax may vary based on Claude Desktop version)
                  "availableVaults": [
-                    { "name": "personal", "path": "/Users/username/Documents/PersonalVault" },
-                    { "name": "work", "path": "/Users/username/Documents/WorkVault" }
+                    // *** Replace with YOUR vaults ***
+                    { "name": "minerva", "path": "/path/to/your/minerva/vault" },
+                    { "name": "personal", "path": "/path/to/your/personal/vault" }
                  ]
             }
         }
@@ -75,7 +83,7 @@ Claude Desktop manages the server process and provides the vault context. Config
 }
 ```
 
-**Note:** The exact configuration for `availableVaults` or how Claude Desktop sends the `vault` argument might differ based on its implementation. Refer to the client's documentation.
+**Note:** The exact configuration for `availableVaults` and how the client uses it depends on the client's implementation. The server expects the `vault` name (e.g., `"minerva"`) within the arguments of each tool call.
 
 Restart the client after saving the configuration.
 
@@ -86,9 +94,9 @@ If you have connection issues, check the client's logs:
 ## Development
 
 ```bash
-# Clone the repository
-git clone https://github.com/StevenStavrakis/obsidian-mcp
-cd obsidian-mcp
+# Clone your fork
+git clone <your-fork-url>
+cd obsidian-mcp # Or your fork's directory name
 
 # Install dependencies using Bun
 bun install
@@ -100,7 +108,7 @@ bun run build
 bun test
 ```
 
-To run the server locally for development, pointing it to specific vaults requires modifying the startup script (`src/main.ts` or a custom script) to instantiate `ObsidianServer` with the desired vault configurations, similar to how it's done in the E2E tests (`e2e/crud.test.ts`).
+To run the server locally during development, use `node build/main.js` or `bun build/main.js`. If you need to test specific vault configurations without relying on the client, you can temporarily modify the default configuration logic in `src/main.ts` or pass vault paths as command-line arguments (which will override the default behavior).
 
 ## Available Tools
 
