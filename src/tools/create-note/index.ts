@@ -14,31 +14,25 @@ const schema = z.object({
   vault: z.string()
     .min(1, "Vault name cannot be empty")
     .describe("Name of the vault to create the note in"),
-  filename: z.string()
-    .min(1, "Filename cannot be empty")
-    .refine(name => !name.includes('/') && !name.includes('\\'), 
-      "Filename cannot contain path separators - use the 'folder' parameter for paths instead. Example: use filename:'note.md', folder:'my/path' instead of filename:'my/path/note.md'")
-    .describe("Just the note name without any path separators (e.g. 'my-note.md', NOT 'folder/my-note.md'). Will add .md extension if missing"),
+  path: z.string()
+    .min(1, "Path cannot be empty")
+    .refine(name => !path.isAbsolute(name),
+      "Path must be relative to vault root")
+    .describe("Path of the note relative to vault root (e.g., 'folder/note.md'). Will add .md extension if missing"),
   content: z.string()
     .min(1, "Content cannot be empty")
-    .describe("Content of the note in markdown format"),
-  folder: z.string()
-    .optional()
-    .refine(folder => !folder || !path.isAbsolute(folder), 
-      "Folder must be a relative path")
-    .describe("Optional subfolder path relative to vault root (e.g. 'journal/subfolder'). Use this for the path instead of including it in filename")
+    .describe("Content of the note in markdown format")
 }).strict();
 
-async function createNote(
-  args: z.infer<typeof schema>,
-  vaultPath: string,
-  _vaultName: string
-): Promise<FileOperationResult> {
-  const sanitizedFilename = ensureMarkdownExtension(args.filename);
+type CreateNoteInput = z.infer<typeof schema>;
 
-  const notePath = args.folder
-    ? path.join(vaultPath, args.folder, sanitizedFilename)
-    : path.join(vaultPath, sanitizedFilename);
+async function createNote(
+  args: CreateNoteInput, // Use the inferred type directly
+  vaultPath: string
+): Promise<FileOperationResult> {
+  // Apply MD extension check here
+  const sanitizedPath = ensureMarkdownExtension(args.path);
+  const notePath = path.join(vaultPath, sanitizedPath);
 
   // Validate path is within vault
   validateVaultPath(vaultPath, notePath);
@@ -50,12 +44,13 @@ async function createNote(
 
     // Check if file exists first
     if (await fileExists(notePath)) {
-      throw createNoteExistsError(notePath);
+      // Use the relative path in the error
+      throw createNoteExistsError(args.path);
     }
 
     // File doesn't exist, proceed with creation
     await fs.writeFile(notePath, args.content, 'utf8');
-    
+
     return {
       success: true,
       message: "Note created successfully",
@@ -70,20 +65,19 @@ async function createNote(
   }
 }
 
-type CreateNoteArgs = z.infer<typeof schema>;
-
 export function createCreateNoteTool(vaults: Map<string, string>) {
-  return createTool<CreateNoteArgs>({
+  return createTool<CreateNoteInput>({
     name: "create-note",
     description: `Create a new note in the specified vault with markdown content.
 
 Examples:
-- Root note: { "vault": "vault1", "filename": "note.md" }
-- Subfolder note: { "vault": "vault2", "filename": "note.md", "folder": "journal/2024" }
-- INCORRECT: { "filename": "journal/2024/note.md" } (don't put path in filename)`,
+- Root note: { "vault": "vault1", "path": "note.md", "content": "..." }
+- Subfolder note: { "vault": "vault2", "path": "journal/2024/note.md", "content": "..." }`,
     schema,
-    handler: async (args, vaultPath, vaultName) => {
-      const result = await createNote(args, vaultPath, vaultName);
+    handler: async (args, vaultPath, _vaultName) => {
+      // Pass args directly
+      const result = await createNote(args, vaultPath);
+      // Ensure consistent response format
       return createToolResponse(formatFileResult(result));
     }
   }, vaults);

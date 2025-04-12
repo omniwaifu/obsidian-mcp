@@ -14,37 +14,31 @@ const schema = z.object({
   vault: z.string()
     .min(1, "Vault name cannot be empty")
     .describe("Name of the vault containing the note"),
-  filename: z.string()
-    .min(1, "Filename cannot be empty")
-    .refine(name => !name.includes('/') && !name.includes('\\'), 
-      "Filename cannot contain path separators - use the 'folder' parameter for paths instead")
-    .describe("Just the note name without any path separators (e.g. 'my-note.md', NOT 'folder/my-note.md')"),
-  folder: z.string()
-    .optional()
-    .refine(folder => !folder || !path.isAbsolute(folder), 
-      "Folder must be a relative path")
-    .describe("Optional subfolder path relative to vault root")
+  path: z.string()
+    .min(1, "Path cannot be empty")
+    .refine(name => !path.isAbsolute(name),
+      "Path must be relative to vault root")
+    .describe("Path of the note relative to vault root (e.g., 'folder/note.md')")
 }).strict();
 
 type ReadNoteInput = z.infer<typeof schema>;
 
 async function readNote(
   vaultPath: string,
-  filename: string,
-  folder?: string
+  notePath: string // Changed from filename, folder
 ): Promise<FileOperationResult & { content: string }> {
-  const sanitizedFilename = ensureMarkdownExtension(filename);
-  const fullPath = folder
-    ? path.join(vaultPath, folder, sanitizedFilename)
-    : path.join(vaultPath, sanitizedFilename);
-  
+  // Apply MD extension check here to the full relative path
+  const sanitizedPath = ensureMarkdownExtension(notePath);
+  const fullPath = path.join(vaultPath, sanitizedPath);
+
   // Validate path is within vault
   validateVaultPath(vaultPath, fullPath);
 
   try {
     // Check if file exists
     if (!await fileExists(fullPath)) {
-      throw createNoteNotFoundError(filename);
+      // Use the provided relative path in the error
+      throw createNoteNotFoundError(notePath);
     }
 
     // Read the file content
@@ -54,7 +48,7 @@ async function readNote(
       success: true,
       message: "Note read successfully",
       path: fullPath,
-      operation: 'edit', // Using 'edit' since we don't have a 'read' operation type
+      operation: 'edit', // Still using 'edit' for now
       content: content
     };
   } catch (error: unknown) {
@@ -71,20 +65,21 @@ export function createReadNoteTool(vaults: Map<string, string>) {
     description: `Read the content of an existing note in the vault.
 
 Examples:
-- Root note: { "vault": "vault1", "filename": "note.md" }
-- Subfolder note: { "vault": "vault1", "filename": "note.md", "folder": "journal/2024" }
-- INCORRECT: { "filename": "journal/2024/note.md" } (don't put path in filename)`,
+- Root note: { "vault": "vault1", "path": "note.md" }
+- Subfolder note: { "vault": "vault1", "path": "journal/2024/note.md" }`,
     schema,
     handler: async (args, vaultPath, _vaultName) => {
-      const result = await readNote(vaultPath, args.filename, args.folder);
-      
+      // Pass args.path directly
+      const result = await readNote(vaultPath, args.path);
+
       const formattedResult = formatFileResult({
         success: result.success,
         message: result.message,
         path: result.path,
         operation: result.operation
       });
-      
+
+      // Ensure consistent response format
       return createToolResponse(
         `${result.content}\n\n${formattedResult}`
       );

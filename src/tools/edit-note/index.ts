@@ -14,16 +14,11 @@ const editSchema = z.object({
   vault: z.string()
     .min(1, "Vault name cannot be empty")
     .describe("Name of the vault containing the note"),
-  filename: z.string()
-    .min(1, "Filename cannot be empty")
-    .refine(name => !name.includes('/') && !name.includes('\\'),
-      "Filename cannot contain path separators - use the 'folder' parameter for paths instead")
-    .describe("Just the note name without any path separators (e.g. 'my-note.md', NOT 'folder/my-note.md')"),
-  folder: z.string()
-    .optional()
-    .refine(folder => !folder || !path.isAbsolute(folder),
-      "Folder must be a relative path")
-    .describe("Optional subfolder path relative to vault root"),
+  path: z.string()
+    .min(1, "Path cannot be empty")
+    .refine(name => !path.isAbsolute(name),
+      "Path must be relative to vault root")
+    .describe("Path of the note relative to vault root (e.g., 'folder/note.md')"),
   operation: z.enum(['append', 'prepend', 'replace'])
     .describe("Type of edit operation - must be one of: 'append', 'prepend', 'replace'")
     .refine(
@@ -44,17 +39,18 @@ const schema = editSchema;
 // Types
 type EditOperation = 'append' | 'prepend' | 'replace';
 
+// Define the input type based on the schema
+type EditNoteInput = z.infer<typeof schema>;
+
 async function editNote(
   vaultPath: string,
-  filename: string,
+  notePath: string, // Changed from filename/folder
   operation: EditOperation,
   content: string,
-  folder?: string
 ): Promise<FileOperationResult> {
-  const sanitizedFilename = ensureMarkdownExtension(filename);
-  const fullPath = folder
-    ? path.join(vaultPath, folder, sanitizedFilename)
-    : path.join(vaultPath, sanitizedFilename);
+  // Apply MD extension check here
+  const sanitizedPath = ensureMarkdownExtension(notePath);
+  const fullPath = path.join(vaultPath, sanitizedPath);
 
   // Validate path is within vault
   validateVaultPath(vaultPath, fullPath);
@@ -68,7 +64,8 @@ async function editNote(
     if (await fileExists(fullPath)) {
       await fs.copyFile(fullPath, backupPath);
     } else {
-      throw createNoteNotFoundError(filename);
+      // If file doesn't exist for append/prepend/replace, throw error
+      throw createNoteNotFoundError(notePath); // Use relative path in error
     }
 
     switch (operation) {
@@ -138,27 +135,24 @@ async function editNote(
   }
 }
 
-type EditNoteArgs = z.infer<typeof schema>;
-
 export function createEditNoteTool(vaults: Map<string, string>) {
-  return createTool<EditNoteArgs>({
+  return createTool<EditNoteInput>({
     name: "edit-note",
     description: `Edit an existing note in the specified vault.
 Supports appending, prepending, or replacing the entire note content.
 
 Examples:
-- Append: { "vault": "vault1", "filename": "note.md", "operation": "append", "content": "new content" }
-- Prepend: { "vault": "vault1", "filename": "note.md", "operation": "prepend", "content": "prepended text" }
-- Replace: { "vault": "vault2", "filename": "note.md", "folder": "journal/2024", "operation": "replace", "content": "replacement content" }
-- INCORRECT: { "filename": "journal/2024/note.md" } (don't put path in filename)`,
+- Append: { "vault": "vault1", "path": "note.md", "operation": "append", "content": "new content" }
+- Prepend: { "vault": "vault1", "path": "note.md", "operation": "prepend", "content": "prepended text" }
+- Replace: { "vault": "vault2", "path": "journal/2024/note.md", "operation": "replace", "content": "replacement content" }`,
     schema,
     handler: async (args, vaultPath, _vaultName) => {
+      // Pass args.path directly
       const result = await editNote(
         vaultPath,
-        args.filename,
+        args.path,
         args.operation,
-        args.content,
-        args.folder
+        args.content
       );
       return createToolResponse(formatFileResult(result));
     }

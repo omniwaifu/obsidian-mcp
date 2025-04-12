@@ -1,6 +1,6 @@
 import { promises as fs, Dirent } from "fs";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
-import { normalizePath, safeJoinPath } from "./path.js";
+import { normalizePath, safeJoinPath, checkPathSafety } from "./path.js";
 
 /**
  * Recursively gets all markdown files in a directory
@@ -10,8 +10,8 @@ export async function getAllMarkdownFiles(vaultPath: string, dir = vaultPath): P
   const normalizedVaultPath = normalizePath(vaultPath);
   const normalizedDir = normalizePath(dir);
 
-  // Verify directory is within vault
-  if (!normalizedDir.startsWith(normalizedVaultPath)) {
+  // Verify directory is within vault using checkPathSafety
+  if (!await checkPathSafety(normalizedVaultPath, normalizedDir)) {
     throw new McpError(
       ErrorCode.InvalidRequest,
       `Search directory must be within vault: ${dir}`
