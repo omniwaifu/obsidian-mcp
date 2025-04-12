@@ -61,19 +61,12 @@ Configure Claude Desktop (or a similar client) to run your specific build:
 {
     "mcpServers": {
         "obsidian": {
-            // Use node to run your local build
             "command": "node",
             "args": [
-                // *** Replace with the ABSOLUTE path to YOUR build/main.js ***
                 "/path/to/your/fork/obsidian-mcp/build/main.js"
             ],
-            // IMPORTANT: Vaults are no longer passed as arguments here.
-            // The client provides vault context via the `vault` argument in tool calls.
-            // Configure the vaults the CLIENT should know about:
              "config": {
-                 // Example (Syntax may vary based on Claude Desktop version)
                  "availableVaults": [
-                    // *** Replace with YOUR vaults ***
                     { "name": "minerva", "path": "/path/to/your/minerva/vault" },
                     { "name": "personal", "path": "/path/to/your/personal/vault" }
                  ]
