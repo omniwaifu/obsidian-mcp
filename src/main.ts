@@ -11,6 +11,9 @@ import { createAddTagsTool } from "./tools/add-tags/index.js";
 import { createRemoveTagsTool } from "./tools/remove-tags/index.js";
 import { createRenameTagTool } from "./tools/rename-tag/index.js";
 import { createReadNoteTool } from "./tools/read-note/index.js";
+import { createAddAliasTool } from "./tools/add-alias/index.js";
+import { createRemoveAliasTool } from "./tools/remove-alias/index.js";
+import { createListAliasesTool } from "./tools/list-aliases/index.js";
 import { listVaultsPrompt } from "./prompts/list-vaults/index.js";
 import { registerPrompt } from "./utils/prompt-factory.js";
 import path from "path";
@@ -487,7 +490,10 @@ Examples:
       createAddTagsTool(vaultsMap),
       createRemoveTagsTool(vaultsMap),
       createRenameTagTool(vaultsMap),
-      createReadNoteTool(vaultsMap)
+      createReadNoteTool(vaultsMap),
+      createAddAliasTool(vaultsMap),
+      createRemoveAliasTool(vaultsMap),
+      createListAliasesTool(vaultsMap)
     ];
 
     for (const tool of tools) {
