@@ -50,7 +50,7 @@ async function createNote(
 
     // File doesn't exist, proceed with creation
     await fs.writeFile(notePath, args.content, 'utf8');
-
+    
     return {
       success: true,
       message: "Note created successfully",

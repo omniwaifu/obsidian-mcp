@@ -44,7 +44,7 @@ type EditOperation = 'append' | 'prepend' | 'replace';
 type EditNoteInput = z.infer<typeof schema>;
 
 async function editNote(
-  vaultPath: string,
+  vaultPath: string, 
   notePath: string, // Changed from filename/folder
   operation: EditOperation,
   content: string,
@@ -52,7 +52,7 @@ async function editNote(
   // Apply MD extension check here
   const sanitizedPath = ensureMarkdownExtension(notePath);
   const fullPath = path.join(vaultPath, sanitizedPath);
-
+  
   // Validate path is within vault
   validateVaultPath(vaultPath, fullPath);
 
@@ -76,7 +76,7 @@ async function editNote(
         try {
           // Read existing content
           const existingContent = await fs.readFile(fullPath, "utf-8");
-
+          
           // Prepare new content based on operation
           let finalContentToWrite: string;
           if (operation === 'append') {
@@ -94,13 +94,16 @@ async function editNote(
 
           // Write the final content
           await fs.writeFile(fullPath, finalContentToWrite);
-
+          
           // Clean up backup on success
           await fs.unlink(backupPath);
 
+          // Correctly form past tense for the message
+          const pastTenseOperation = operation === 'replace' ? 'replaced' : `${operation}ed`;
+
           return {
             success: true,
-            message: `Note ${operation}ed successfully`,
+            message: `Note ${pastTenseOperation} successfully`,
             path: fullPath,
             operation: 'edit'
           };
@@ -113,7 +116,7 @@ async function editNote(
             } catch (rollbackError: unknown) {
               const errorMessage = error instanceof Error ? error.message : String(error);
               const rollbackErrorMessage = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
-
+              
               throw new McpError(
                 ErrorCode.InternalError,
                 `Failed to rollback changes. Original error: ${errorMessage}. Rollback error: ${rollbackErrorMessage}. Backup file preserved at ${backupPath}`
@@ -123,7 +126,7 @@ async function editNote(
           throw error;
         }
       }
-
+      
       default: {
         const _exhaustiveCheck: never = operation;
         throw new McpError(
@@ -154,9 +157,9 @@ Examples:
     handler: async (args, vaultPath, _vaultName) => {
       // Pass args.path directly
       const result = await editNote(
-        vaultPath,
+        vaultPath, 
         args.path,
-        args.operation,
+        args.operation, 
         args.content
       );
       return createToolResponse(formatFileResult(result));

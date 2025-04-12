@@ -30,7 +30,7 @@ async function readNote(
   // Apply MD extension check here to the full relative path
   const sanitizedPath = ensureMarkdownExtension(notePath);
   const fullPath = path.join(vaultPath, sanitizedPath);
-
+  
   // Validate path is within vault
   validateVaultPath(vaultPath, fullPath);
 
@@ -71,14 +71,14 @@ Examples:
     handler: async (args, vaultPath, _vaultName) => {
       // Pass args.path directly
       const result = await readNote(vaultPath, args.path);
-
+      
       const formattedResult = formatFileResult({
         success: result.success,
         message: result.message,
         path: result.path,
         operation: result.operation
       });
-
+      
       // Ensure consistent response format
       return createToolResponse(
         `${result.content}\n\n${formattedResult}`

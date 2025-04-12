@@ -58,10 +58,14 @@ export function getRelatedTags(tag: string, allTags: string[]): {
     parents.push(current);
   }
   
-  // Find children
+  // Find *direct* children
   allTags.forEach(otherTag => {
     if (isParentTag(tag, otherTag)) {
-      children.push(otherTag);
+      // Check if it's a direct child (no further '/' after the parent part)
+      const childPart = otherTag.substring(tag.length + 1); // +1 for the '/'
+      if (!childPart.includes('/')) {
+        children.push(otherTag);
+      }
     }
   });
   
@@ -110,7 +114,20 @@ export function normalizeTag(tag: string, normalize = true): string {
  * Parses a note's content into frontmatter and body
  */
 export function parseNote(content: string): ParsedNote {
-  const frontmatterRegex = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/;
+  // Regex updated to handle optional CR, optional final newline after closing ---, and empty frontmatter
+  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
+  // Special case for empty frontmatter
+  const emptyFrontmatterRegex = /^---\r?\n---\r?\n?([\s\S]*)$/;
+
+  const emptyMatch = content.match(emptyFrontmatterRegex);
+  if (emptyMatch) {
+    return {
+      frontmatter: {},
+      content: emptyMatch[1] || '', // Ensure content is string even if empty
+      hasFrontmatter: true
+    };
+  }
+
   const match = content.match(frontmatterRegex);
 
   if (!match) {
@@ -154,32 +171,62 @@ export function stringifyNote(parsed: ParsedNote): string {
 export function extractTags(content: string): string[] {
   const tags = new Set<string>();
   
-  // Match hashtags that aren't inside code blocks or HTML comments
-  const TAG_PATTERN = /(?<!`)#[a-zA-Z0-9][a-zA-Z0-9/]*(?!`)/g;
+  // Regex refined: Match # followed by allowed chars, ensure it's followed by a non-tag character or end of line
+  // Allowed: letters, numbers, /, _, -
+  // (Removed '.' from allowed chars as it's often punctuation)
+  const TAG_PATTERN = /(?<![\w`])#([a-zA-Z0-9/_-]+)(?![a-zA-Z0-9/_-])/g;
   
-  // Split content into lines
   const lines = content.split('\n');
   let inCodeBlock = false;
   let inHtmlComment = false;
   
   for (const line of lines) {
-    // Check for code block boundaries
-    if (line.trim().startsWith('```')) {
-      inCodeBlock = !inCodeBlock;
-      continue;
+    let currentLine = line;
+    let processLine = true;
+
+    // Check for HTML comment boundaries across lines
+    if (inHtmlComment) {
+        if (currentLine.includes('-->')) {
+            inHtmlComment = false;
+            currentLine = currentLine.substring(currentLine.indexOf('-->') + 3);
+        } else {
+            processLine = false; // Still inside comment block
+        }
     }
-    
-    // Check for HTML comment boundaries
-    if (line.includes('<!--')) inHtmlComment = true;
-    if (line.includes('-->')) inHtmlComment = false;
-    
-    // Skip if we're in a code block or HTML comment
-    if (inCodeBlock || inHtmlComment) continue;
-    
-    // Extract tags from the line
-    const matches = line.match(TAG_PATTERN);
-    if (matches) {
-      matches.forEach(tag => tags.add(tag.slice(1))); // Remove # prefix
+    // Check for code block boundaries
+    // Needs to be checked *after* potential HTML comment end on the same line
+    if (processLine && currentLine.trim().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      processLine = false; // Don't process the fence line itself
+    }
+
+    if (processLine && !inCodeBlock) {
+        // Find tags on the line, considering potential start of HTML comment
+        let searchLine = currentLine;
+        if (currentLine.includes('<!--')) {
+            searchLine = currentLine.substring(0, currentLine.indexOf('<!--'));
+            // If comment doesn't close on same line, set flag for next iteration
+            if (!currentLine.substring(currentLine.indexOf('<!--')).includes('-->')) {
+                 inHtmlComment = true;
+            }
+        }
+
+        const matches = searchLine.match(TAG_PATTERN);
+        if (matches) {
+            matches.forEach(tagMatch => {
+                // Use the refined regex to capture the tag part correctly (Group 1)
+                const tag = tagMatch.match(/#([a-zA-Z0-9/_-]+)/)?.[1];
+                if (!tag) return;
+
+                // Ensure tag doesn't immediately follow a backtick (inline code)
+                const index = searchLine.indexOf(tagMatch);
+                if (index > 0 && searchLine[index - 1] === '`') {
+                    // Skip inline code tag
+                } else {
+                    tags.add(tag); // Add captured group 1 (without #)
+                }
+            });
+        }
     }
   }
   
@@ -187,20 +234,25 @@ export function extractTags(content: string): string[] {
 }
 
 /**
- * Safely adds tags to frontmatter
+ * Safely adds tags to frontmatter (modifies in-place)
  */
 export function addTagsToFrontmatter(
-  frontmatter: Record<string, any>,
+  frontmatter: Record<string, any>, // Modifies this object directly
   newTags: string[],
   normalize = true
-): Record<string, any> {
-  const updatedFrontmatter = { ...frontmatter };
-  const existingTags = new Set(
-    Array.isArray(frontmatter.tags) ? frontmatter.tags : []
-  );
+): void { // Returns void as it modifies in-place
+  // Handle existing tags (string or array)
+  let existingTagsArray: string[] = [];
+  if (typeof frontmatter.tags === 'string') {
+    existingTagsArray = [frontmatter.tags];
+  } else if (Array.isArray(frontmatter.tags)) {
+    existingTagsArray = frontmatter.tags;
+  }
+  const existingTags = new Set(existingTagsArray);
   
   for (const tag of newTags) {
     if (!validateTag(tag)) {
+      // Keep original behavior: throw for invalid tags during add
       throw new McpError(
         ErrorCode.InvalidParams,
         `Invalid tag format: ${tag}`
@@ -209,23 +261,32 @@ export function addTagsToFrontmatter(
     existingTags.add(normalizeTag(tag, normalize));
   }
   
-  updatedFrontmatter.tags = Array.from(existingTags).sort();
-  return updatedFrontmatter;
+  // Update the frontmatter object directly
+  if (existingTags.size > 0) {
+     // Obsidian convention: single tag as string, multiple as array
+     if (existingTags.size === 1) {
+         frontmatter.tags = Array.from(existingTags)[0];
+     } else {
+         frontmatter.tags = Array.from(existingTags).sort();
+     }
+  } else {
+      delete frontmatter.tags; // Remove if empty
+  }
 }
 
 /**
- * Safely removes tags from frontmatter with detailed reporting
+ * Safely removes tags from frontmatter with detailed reporting (modifies in-place)
  */
 export function removeTagsFromFrontmatter(
-  frontmatter: Record<string, any>,
+  frontmatter: Record<string, any>, // Modifies this object directly
   tagsToRemove: string[],
   options: {
     normalize?: boolean;
-    preserveChildren?: boolean;
+    // preserveChildren?: boolean; // TODO: Implement preserveChildren if needed
     patterns?: string[];
   } = {}
 ): {
-  frontmatter: Record<string, any>;
+  // frontmatter: Record<string, any>; // No longer returns frontmatter
   report: {
     removed: TagChange[];
     preserved: TagChange[];
@@ -233,65 +294,47 @@ export function removeTagsFromFrontmatter(
 } {
   const {
     normalize = true,
-    preserveChildren = false,
+    // preserveChildren = false, // TODO
     patterns = []
   } = options;
 
-  const updatedFrontmatter = { ...frontmatter };
-  const existingTags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [];
+  // Handle existing tags (string or array)
+  let currentTags: string[] = [];
+  if (typeof frontmatter.tags === 'string') {
+    currentTags = [frontmatter.tags];
+  } else if (Array.isArray(frontmatter.tags)) {
+    currentTags = frontmatter.tags;
+  }
+
   const removed: TagChange[] = [];
   const preserved: TagChange[] = [];
+  const tagsToRemoveNormalized = new Set(tagsToRemove.map(t => normalizeTag(t, normalize)));
+  const patternsRegex = patterns.map(p => new RegExp(`^${p.replace(/\*/g, '.*').replace(/\//g, '\\/')}$`));
 
-  // Get all related tags if preserving children
-  const relatedTagsMap = new Map(
-    tagsToRemove.map(tag => [
-      tag,
-      preserveChildren ? getRelatedTags(tag, existingTags) : null
-    ])
-  );
-
-  const newTags = existingTags.filter(tag => {
+  const remainingTags = currentTags.filter(tag => {
     const normalizedTag = normalizeTag(tag, normalize);
+    const shouldRemove = tagsToRemoveNormalized.has(normalizedTag) || patternsRegex.some(re => re.test(normalizedTag));
     
-    // Check if tag should be removed
-    const shouldRemove = tagsToRemove.some(removeTag => {
-      // Direct match
-      if (normalizeTag(removeTag, normalize) === normalizedTag) return true;
-      
-      // Pattern match
-      if (patterns.some(pattern => matchesTagPattern(pattern, normalizedTag))) {
-        return true;
-      }
-      
-      // Hierarchical match (if not preserving children)
-      if (!preserveChildren) {
-        const related = relatedTagsMap.get(removeTag);
-        if (related?.parents.includes(normalizedTag)) return true;
-      }
-      
-      return false;
-    });
-
     if (shouldRemove) {
-      removed.push({
-        tag: normalizedTag,
-        location: 'frontmatter'
-      });
-      return false;
+       // TODO: Add preserveChildren logic here if re-enabled
+       removed.push({ tag: tag, location: 'frontmatter' });
+       return false; // Filter out
     } else {
-      preserved.push({
-        tag: normalizedTag,
-        location: 'frontmatter'
-      });
-      return true;
+       preserved.push({ tag: tag, location: 'frontmatter' });
+       return true; // Keep
     }
   });
 
-  updatedFrontmatter.tags = newTags.sort();
-  return {
-    frontmatter: updatedFrontmatter,
-    report: { removed, preserved }
-  };
+  // Update the frontmatter object directly
+  if (remainingTags.length === 0) {
+    delete frontmatter.tags;
+  } else {
+    // Always store as array internally, even if just one tag remains
+    // Obsidian handles rendering single-element array as string if needed
+    frontmatter.tags = remainingTags.sort(); 
+  }
+
+  return { report: { removed, preserved } };
 }
 
 /**
