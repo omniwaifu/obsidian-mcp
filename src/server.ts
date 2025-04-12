@@ -127,8 +127,8 @@ export class ObsidianServer {
       // Update connection activity
       this.connectionMonitor.updateActivity();
 
-      // Check rate limit (using method name as client id for basic implementation)
-      if (!this.rateLimiter.checkLimit(request.method)) {
+      // Check rate limit using a global client ID
+      if (!this.rateLimiter.checkLimit('global_client')) {
         throw new McpError(ErrorCode.InvalidRequest, "Rate limit exceeded");
       }
     } catch (error) {
