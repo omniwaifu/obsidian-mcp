@@ -119,3 +119,71 @@ export async function safeReadFile(filePath: string): Promise<string | undefined
     );
   }
 }
+
+/**
+ * Recursively gets all non-markdown files in a directory, excluding common hidden/system files.
+ */
+export async function getAllNonMarkdownFiles(vaultPath: string, dir = vaultPath): Promise<string[]> {
+  const normalizedVaultPath = normalizePath(vaultPath);
+  const normalizedDir = normalizePath(dir);
+
+  if (!await checkPathSafety(normalizedVaultPath, normalizedDir)) {
+    throw new McpError(
+      ErrorCode.InvalidRequest,
+      `Directory must be within vault: ${dir}`
+    );
+  }
+
+  // Common hidden/system files/folders to exclude
+  const excludedNames = new Set(['.git', '.obsidian', '.trash', '.DS_Store']);
+
+  try {
+    const files: string[] = [];
+    let entries: Dirent[];
+
+    try {
+      entries = await fs.readdir(normalizedDir, { withFileTypes: true });
+    } catch (error) {
+      if ((error as any).code === 'ENOENT') {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `Directory not found: ${dir}`
+        );
+      }
+      throw error;
+    }
+
+    for (const entry of entries) {
+      if (excludedNames.has(entry.name) || entry.name.startsWith('.')) {
+         continue; // Skip excluded/hidden files/folders
+      }
+      
+      try {
+        const fullPath = safeJoinPath(normalizedDir, entry.name);
+
+        if (entry.isDirectory()) {
+          const subDirFiles = await getAllNonMarkdownFiles(normalizedVaultPath, fullPath);
+          files.push(...subDirFiles);
+        } else if (entry.isFile() && !entry.name.endsWith(".md")) {
+          // Add file if it's not markdown
+          files.push(fullPath);
+        }
+      } catch (error) {
+        if (error instanceof McpError) {
+          console.error(`Skipping ${entry.name}:`, error.message);
+        } else {
+          console.error(`Error processing ${entry.name}:`, error);
+        }
+      }
+    }
+
+    return files;
+  } catch (error) {
+    if (error instanceof McpError) throw error;
+
+    throw new McpError(
+      ErrorCode.InternalError,
+      `Failed to read directory ${dir}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
