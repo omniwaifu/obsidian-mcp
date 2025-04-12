@@ -10,6 +10,36 @@ import { extractTags, normalizeTag, matchesTagPattern } from "../../utils/tags.j
 import { createToolResponse, formatSearchResult } from "../../utils/responses.js";
 import { createTool } from "../../utils/tool-factory.js";
 
+// --- Query Parsing Logic ---
+interface ParsedQuery {
+  cleanQuery: string;
+  searchPath?: string;
+  searchFile?: string;
+}
+
+function parseSearchQuery(rawQuery: string): ParsedQuery {
+  const parts = rawQuery.split(/\s+/);
+  const operators: { path?: string; file?: string } = {};
+  const queryTerms: string[] = [];
+
+  for (const part of parts) {
+    if (part.startsWith('path:')) {
+      operators.path = part.substring(5).replace(/^["']|["']$/g, ''); // Remove potential quotes
+    } else if (part.startsWith('file:')) {
+      operators.file = part.substring(5).replace(/^["']|["']$/g, ''); // Remove potential quotes
+    } else {
+      queryTerms.push(part);
+    }
+  }
+
+  return {
+    cleanQuery: queryTerms.join(' '),
+    searchPath: operators.path,
+    searchFile: operators.file,
+  };
+}
+// --- End Query Parsing Logic ---
+
 // Input validation schema with descriptions
 const schema = z.object({
   vault: z.string()
@@ -17,10 +47,7 @@ const schema = z.object({
     .describe("Name of the vault to search in"),
   query: z.string()
     .min(1, "Search query cannot be empty")
-    .describe("Search query (required). For text search use the term directly, for tag search use tag: prefix"),
-  path: z.string()
-    .optional()
-    .describe("Optional subfolder path within the vault to limit search scope"),
+    .describe("Search query. Supports operators like path: and file: (e.g., 'term path:folder file:name'). For tag search use tag: prefix."),
   caseSensitive: z.boolean()
     .optional()
     .default(false)
@@ -46,24 +73,32 @@ function normalizeTagQuery(query: string): string {
 async function searchFilenames(
   vaultPath: string,
   query: string,
-  options: SearchOptions
+  options: SearchOptions,
+  filePathPattern?: string
 ): Promise<SearchResult[]> {
   try {
-    // Use safeJoinPath for path safety
+    // Use options.path which might be overridden by path: operator
     const searchDir = options.path ? safeJoinPath(vaultPath, options.path) : vaultPath;
     const files = await getAllMarkdownFiles(vaultPath, searchDir);
     const results: SearchResult[] = [];
     const searchQuery = options.caseSensitive ? query : query.toLowerCase();
+    const filePatternLower = filePathPattern && !options.caseSensitive ? filePathPattern.toLowerCase() : filePathPattern;
 
     for (const file of files) {
       const relativePath = path.relative(vaultPath, file);
       const searchTarget = options.caseSensitive ? relativePath : relativePath.toLowerCase();
 
-      if (searchTarget.includes(searchQuery)) {
+      // Check against file: pattern first if provided
+      if (filePatternLower && !searchTarget.includes(filePatternLower)) {
+        continue; // Skip if filename doesn't match file: pattern
+      }
+
+      // Check against main query if it exists or if searchType is filename/both
+      if (options.searchType !== 'content' && (!searchQuery || searchTarget.includes(searchQuery))) {
         results.push({
           file: relativePath,
           matches: [{
-            line: 0, // We use 0 to indicate this is a filename match
+            line: 0,
             text: `Filename match: ${relativePath}`
           }]
         });
@@ -80,23 +115,36 @@ async function searchFilenames(
 async function searchContent(
   vaultPath: string,
   query: string,
-  options: SearchOptions
+  options: SearchOptions,
+  filePathPattern?: string
 ): Promise<SearchResult[]> {
   try {
-    // Use safeJoinPath for path safety
     const searchDir = options.path ? safeJoinPath(vaultPath, options.path) : vaultPath;
     const files = await getAllMarkdownFiles(vaultPath, searchDir);
     const results: SearchResult[] = [];
-    const isTagSearchQuery = isTagSearch(query);
-    const normalizedTagQuery = isTagSearchQuery ? normalizeTagQuery(query) : '';
+    const isTagQuery = isTagSearch(query);
+    const normalizedTagQuery = isTagQuery ? normalizeTagQuery(query) : '';
+    const searchQuery = options.caseSensitive ? query : query.toLowerCase();
+    const filePatternLower = filePathPattern && !options.caseSensitive ? filePathPattern.toLowerCase() : filePathPattern;
 
     for (const file of files) {
+      const relativePath = path.relative(vaultPath, file);
+      const searchTargetFile = options.caseSensitive ? relativePath : relativePath.toLowerCase();
+
+      // Check against file: pattern first if provided
+      if (filePatternLower && !searchTargetFile.includes(filePatternLower)) {
+        continue; // Skip if filename doesn't match file: pattern
+      }
+
+      // Skip content search if query is empty and it's not a tag search
+      if (!query && !isTagQuery) continue;
+
       try {
         const content = await fs.readFile(file, "utf-8");
         const lines = content.split("\n");
         const matches: SearchResult["matches"] = [];
 
-        if (isTagSearchQuery) {
+        if (isTagQuery) {
           // For tag searches, extract all tags from the content
           const fileTags = extractTags(content);
 
@@ -117,8 +165,6 @@ async function searchContent(
           });
         } else {
           // Regular text search
-          const searchQuery = options.caseSensitive ? query : query.toLowerCase();
-
           lines.forEach((line, index) => {
             const searchLine = options.caseSensitive ? line : line.toLowerCase();
             if (searchLine.includes(searchQuery)) {
@@ -132,13 +178,12 @@ async function searchContent(
 
         if (matches.length > 0) {
           results.push({
-            file: path.relative(vaultPath, file),
+            file: relativePath,
             matches
           });
         }
       } catch (err) {
         console.error(`Error reading file ${file}:`, err);
-        // Continue with other files
       }
     }
 
@@ -151,19 +196,52 @@ async function searchContent(
 
 async function searchVault(
   vaultPath: string,
-  query: string,
+  rawQuery: string,
   options: SearchOptions
 ): Promise<SearchOperationResult> {
   try {
+    // Parse the query for operators
+    const { cleanQuery, searchPath, searchFile } = parseSearchQuery(rawQuery);
+
+    // Update options.path if path: operator was used
+    const effectivePath = searchPath || options.path;
+    const currentOptions: SearchOptions = { ...options, path: effectivePath };
+
     // Normalize vault path upfront
     const normalizedVaultPath = normalizePath(vaultPath);
     let results: SearchResult[] = [];
     let errors: string[] = [];
 
-    if (options.searchType === 'filename' || options.searchType === 'both') {
+    // Determine effective search types based on operators and cleanQuery
+    let runFilenameSearch = currentOptions.searchType === 'filename' || currentOptions.searchType === 'both' || !!searchFile;
+    let runContentSearch = (currentOptions.searchType === 'content' || currentOptions.searchType === 'both') && (!!cleanQuery || isTagSearch(cleanQuery));
+
+    // If only file: operator is present, search filenames
+    if (searchFile && !cleanQuery && !isTagSearch(cleanQuery) && currentOptions.searchType !== 'content') {
+        runFilenameSearch = true;
+        runContentSearch = false;
+    }
+    // If only path: operator is present, search both content and filename by default?
+    // Let's stick to the provided searchType or default ('content') unless overridden
+    if (!searchFile && !cleanQuery && !isTagSearch(cleanQuery) && searchPath) {
+       // If only path: is given, maybe default to both?
+       // Or respect original searchType option. Let's respect option for now.
+       // runFilenameSearch = currentOptions.searchType === 'filename' || currentOptions.searchType === 'both';
+       // runContentSearch = currentOptions.searchType === 'content' || currentOptions.searchType === 'both';
+    }
+
+    // --- Perform Searches --- 
+
+    if (runFilenameSearch) {
       try {
-        const filenameResults = await searchFilenames(normalizedVaultPath, query, options);
-        results = results.concat(filenameResults);
+        // Pass cleanQuery for text matching and searchFile for filtering
+        const filenameResults = await searchFilenames(normalizedVaultPath, cleanQuery, currentOptions, searchFile);
+        // Merge results carefully - avoid duplicates if both content/filename search run
+        filenameResults.forEach(fr => {
+          if (!results.some(r => r.file === fr.file)) {
+            results.push(fr);
+          }
+        });
       } catch (error) {
         if (error instanceof McpError) {
           errors.push(`Filename search error: ${error.message}`);
@@ -173,10 +251,19 @@ async function searchVault(
       }
     }
 
-    if (options.searchType === 'content' || options.searchType === 'both') {
+    if (runContentSearch) {
       try {
-        const contentResults = await searchContent(normalizedVaultPath, query, options);
-        results = results.concat(contentResults);
+        // Pass cleanQuery for content matching and searchFile for filtering
+        const contentResults = await searchContent(normalizedVaultPath, cleanQuery, currentOptions, searchFile);
+        // Merge results, potentially adding matches to existing file entries from filename search
+        contentResults.forEach(cr => {
+            const existing = results.find(r => r.file === cr.file);
+            if (existing) {
+                existing.matches = [...(existing.matches || []), ...(cr.matches || [])];
+            } else {
+                results.push(cr);
+            }
+        });
       } catch (error) {
         if (error instanceof McpError) {
           errors.push(`Content search error: ${error.message}`);
@@ -186,6 +273,7 @@ async function searchVault(
       }
     }
 
+    // Recalculate total matches after potential merging
     const totalMatches = results.reduce((sum, result) => sum + (result.matches?.length ?? 0), 0);
 
     // If we have some results but also errors, we'll return partial results with a warning
@@ -225,20 +313,18 @@ async function searchVault(
 export const createSearchVaultTool = (vaults: Map<string, string>) => {
   return createTool<SearchVaultInput>({
     name: "search-vault",
-    description: `Search for specific content within vault notes (NOT for listing available vaults - use the list-vaults prompt for that).
-
-This tool searches through note contents and filenames for specific text or tags:
-- Content search: { "vault": "vault1", "query": "hello world", "searchType": "content" }
-- Filename search: { "vault": "vault2", "query": "meeting-notes", "searchType": "filename" }
-- Search both: { "vault": "vault1", "query": "project", "searchType": "both" }
-- Tag search: { "vault": "vault2", "query": "tag:status/active" }
-- Search in subfolder: { "vault": "vault1", "query": "hello", "path": "journal/2024" }
-
-Note: To get a list of available vaults, use the list-vaults prompt instead of this search tool.`,
+    description: `Search for specific content or filenames within vault notes.
+Supports operators like 'path:' to limit search to a folder and 'file:' to limit by filename pattern.
+Examples:
+- Text search: { "query": "hello world" }
+- Tag search: { "query": "tag:status/active" }
+- Path scope: { "query": "term path:journal/2024" }
+- Filename scope: { "query": "term file:meeting" }
+- Combined: { "query": "report path:projects file:Q3" }
+Note: Use 'list-vaults' prompt to see available vaults.`,
     schema,
     handler: async (args, vaultPath, _vaultName) => {
       const options: SearchOptions = {
-        path: args.path,
         caseSensitive: args.caseSensitive,
         searchType: args.searchType
       };
