@@ -256,3 +256,30 @@ export function formatBookmarksResult(result: BookmarksFile): string {
 
   return parts.join('\n');
 }
+
+/**
+ * Represents a found task item (could be imported)
+ */
+interface TaskItem { 
+  text: string; 
+  checked: boolean; 
+  line: number; 
+}
+
+/**
+ * Formats the result of getting tasks from a note
+ */
+export function formatTasksResult(result: { tasks: TaskItem[] }, notePath: string): string {
+  if (!result.tasks || result.tasks.length === 0) {
+    return `No tasks found in '${notePath}'.`;
+  }
+
+  const parts: string[] = [`Tasks in '${notePath}':`];
+  result.tasks.forEach(task => {
+    const checkbox = task.checked ? '[x]' : '[ ]';
+    // Include line number for potential use with toggle-task
+    parts.push(`  L${task.line}: ${checkbox} ${task.text}`); 
+  });
+
+  return parts.join('\n');
+}
