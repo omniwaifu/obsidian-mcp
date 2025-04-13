@@ -16,7 +16,6 @@ import { createRemoveAliasTool } from "./tools/remove-alias/index.js";
 import { createListAliasesTool } from "./tools/list-aliases/index.js";
 import { createListFilesTool } from "./tools/list-files/index.js";
 import { createListDirectoryTool } from "./tools/list-directory/index.js";
-import { createGetBacklinksTool } from "./tools/get-backlinks/index.js";
 import { createListBookmarksTool } from "./tools/list-bookmarks/index.js";
 import { createGetDailyNotePathTool } from "./tools/get-daily-note-path/index.js";
 import { createGetTasksInNoteTool } from "./tools/get-tasks-in-note/index.js";
@@ -375,7 +374,6 @@ async function main() {
   server.registerTool(createListAliasesTool(vaultsMap));
   server.registerTool(createListFilesTool(vaultsMap));
   server.registerTool(createListDirectoryTool(vaultsMap));
-  server.registerTool(createGetBacklinksTool(vaultsMap));
   server.registerTool(createListBookmarksTool(vaultsMap));
   server.registerTool(createGetDailyNotePathTool(vaultsMap));
   server.registerTool(createGetTasksInNoteTool(vaultsMap));

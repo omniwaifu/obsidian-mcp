@@ -17,7 +17,6 @@ This MCP has read and write access (if you allow it). Please. PLEASE backup your
 - Update links automatically when notes are moved
 - List non-Markdown files (images, PDFs, etc.)
 - Search vault contents with basic operators (`path:`, `file:`)
-- Find backlinks to notes
 - List bookmarks from the core Bookmarks plugin
 - Get the path for today's daily note
     - Path is cached, so if you change your path to daily notes, you might need to wait a bit for the cache to update.
@@ -129,14 +128,13 @@ The server exposes tools via the Model Context Protocol. The exact list can be r
 -   `rename-tag`: Rename a tag across the entire vault.
 -   `list-files`: List non-Markdown files in the vault or a sub-directory.
 -   `search-vault`: Search notes (supports `path:`, `file:` operators).
--   `get-backlinks`: Find notes linking to a target note.
 -   `list-bookmarks`: List items from the Bookmarks core plugin.
 -   `get-daily-note-path`: Calculate the expected path for today's daily note.
 -   `get-tasks-in-note`: List basic Markdown tasks (`- [ ]`/`- [x]`) in a note.
 -   `toggle-task`: Toggle the completion status of a task on a specific line.
 -   _(Potentially others like remove-tags, etc.)_
 
-**Tool Usage:** All tools that operate on files (`read-note`, `edit-note`, `create-note`, `move-note`, `add-alias`, `add-tags`, `list-files`, `search-vault` with `path:`, `list-directory`, `get-backlinks`, `get-tasks-in-note`, `toggle-task`) require a `vault` argument specifying the **name** of the target vault (which must be known to the client and correspond to a vault the server is implicitly configured for by the client environment). They also require a `path` argument relative to the vault root (where applicable, e.g., not for `list-bookmarks` or `get-daily-note-path` which only need the vault).
+**Tool Usage:** All tools that operate on files (`read-note`, `edit-note`, `create-note`, `move-note`, `add-alias`, `add-tags`, `list-files`, `search-vault` with `path:`, `list-directory`, `get-tasks-in-note`, `toggle-task`) require a `vault` argument specifying the **name** of the target vault (which must be known to the client and correspond to a vault the server is implicitly configured for by the client environment). They also require a `path` argument relative to the vault root (where applicable, e.g., not for `list-bookmarks` or `get-daily-note-path` which only need the vault).
 
 Example `read-note` arguments:
 `{ "vault": "work", "path": "projects/alpha/meeting-notes.md" }`
@@ -170,7 +168,6 @@ bun test e2e/
     4. Mark the 'Call Mom' task as complete.
     5. List the tasks again to confirm the change.
     6. Create a new note in the root called "Test Backlink Note.md" with the content "This note links to [[Today's daily note path]]". (Replace 'Today's daily note path' with the actual path obtained in step 1).
-    7. Find all backlinks for today's daily note.
     8. List the contents of the root directory.
     9. List my bookmarks.
 ```

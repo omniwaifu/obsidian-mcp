@@ -58,7 +58,6 @@ function formatSimpleDate(date: Date, formatString: string): string {
     // Check if any Moment-like tokens remain after our replacements
     const remainingTokens = formatted.replace(/[^YMDW]/g, ''); // Remove non-token chars
     if (/[YMDW]/i.test(remainingTokens)) { // Case-insensitive check for remaining Y, M, D, W
-       console.warn(`Daily note format "${formatString}" may contain unsupported tokens after initial replacement. Result: "${formatted}"`);
        throw new McpError(ErrorCode.InvalidParams, `Daily note format "${formatString}" contains unsupported formatting tokens.`);
     }
 
@@ -77,11 +76,9 @@ async function getDailyNotePath(
 
   // Check cache validity
   if (cachedEntry && (now - cachedEntry.timestamp < CACHE_DURATION_MS)) {
-    console.log(`[getDailyNotePath] Using cached config for vault: '${vaultName}'`);
     config = cachedEntry.config;
   } else {
     // Cache miss or expired
-    console.log(`[getDailyNotePath] Cache miss/expired for vault: '${vaultName}'. Reading config file.`);
     const configFilePath = path.join(vaultPath, '.obsidian', 'daily-notes.json');
     try {
       const content = await fs.readFile(configFilePath, 'utf8');
@@ -111,8 +108,6 @@ async function getDailyNotePath(
       throw new McpError(ErrorCode.InvalidRequest, "Daily notes configuration is missing the 'format' field.");
   }
   const folder = config.folder || ''; 
-  // Logging now happens *before* date formatting
-  console.log(`[getDailyNotePath] Using folder: '${folder}' (from config: '${config.folder}')`); 
 
   const today = new Date();
   let formattedDate: string;
@@ -144,7 +139,10 @@ export function createGetDailyNotePathTool(vaults: Map<string, string>) {
       try {
         // Pass vaultName to the core logic function for caching
         const result = await getDailyNotePath(args, vaultPath, vaultName);
-        return createToolResponse(`Today's daily note path: ${result.path}`);
+        return {
+          type: "json",
+          data: { path: result.path }
+        };
       } catch (error: any) {
          if (error instanceof McpError) {
            throw error;
