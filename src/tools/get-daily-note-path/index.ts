@@ -38,6 +38,11 @@ function formatSimpleDate(date: Date, formatString: string): string {
     const year = date.getFullYear();
     const month = date.getMonth() + 1; // JS months are 0-indexed
     const day = date.getDate();
+    const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+
+    // Add day names array
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const fullDayName = dayNames[dayOfWeek];
 
     let formatted = formatString;
     formatted = formatted.replace(/YYYY/g, String(year));
@@ -45,6 +50,8 @@ function formatSimpleDate(date: Date, formatString: string): string {
     formatted = formatted.replace(/M/g, String(month));
     formatted = formatted.replace(/DD/g, String(day).padStart(2, '0'));
     formatted = formatted.replace(/D/g, String(day));
+    // Add replacement for dddd
+    formatted = formatted.replace(/dddd/g, fullDayName);
 
     if (formatString.includes('W')) {
         const tempDate = new Date(date.valueOf());
@@ -55,12 +62,6 @@ function formatSimpleDate(date: Date, formatString: string): string {
         formatted = formatted.replace(/W/g, String(weekNumber));
     }
     
-    // Check if any Moment-like tokens remain after our replacements
-    const remainingTokens = formatted.replace(/[^YMDW]/g, ''); // Remove non-token chars
-    if (/[YMDW]/i.test(remainingTokens)) { // Case-insensitive check for remaining Y, M, D, W
-       throw new McpError(ErrorCode.InvalidParams, `Daily note format "${formatString}" contains unsupported formatting tokens.`);
-    }
-
     return formatted;
 }
 
@@ -136,13 +137,14 @@ export function createGetDailyNotePathTool(vaults: Map<string, string>) {
     description: `Calculates the expected relative path for today's daily note based on the Daily Notes core plugin settings (.obsidian/daily-notes.json).\n\nExamples:\n- Get path for vault: { "vault": "my_vault" }`,
     schema,
     handler: async (args, vaultPath, vaultName) => {
+      // --- DEBUG LOG ---
+      // console.error(`[DEBUG] get-daily-note-path Handler - Received vaultName: ${vaultName}, vaultPath: ${vaultPath}`);
+      // --- END DEBUG LOG ---
       try {
         // Pass vaultName to the core logic function for caching
         const result = await getDailyNotePath(args, vaultPath, vaultName);
-        return {
-          type: "json",
-          data: { path: result.path }
-        };
+        // Corrected: Format result into a string for createToolResponse
+        return createToolResponse(`Daily note path: ${result.path}`); 
       } catch (error: any) {
          if (error instanceof McpError) {
            throw error;

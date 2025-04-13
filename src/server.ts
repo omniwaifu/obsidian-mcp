@@ -22,6 +22,7 @@ import {
 } from "./resources/resources.js";
 import { listPrompts, getPrompt, registerPrompt } from "./utils/prompt-factory.js";
 import { listVaultsPrompt } from "./prompts/list-vaults/index.js";
+import { VaultResolver } from "./utils/vault-resolver.js";
 
 // Utility function to expand home directory
 function expandHome(filepath: string): string {
@@ -37,6 +38,7 @@ export class ObsidianServer {
   private vaults: Map<string, string> = new Map();
   private rateLimiter: RateLimiter;
   private connectionMonitor: ConnectionMonitor;
+  private vaultResolver: VaultResolver;
 
   constructor(vaultConfigs: { name: string; path: string }[]) {
     if (!vaultConfigs || vaultConfigs.length === 0) {
@@ -76,6 +78,7 @@ export class ObsidianServer {
 
       this.vaults.set(config.name, resolvedPath);
     });
+    this.vaultResolver = new VaultResolver(this.vaults);
     this.server = new Server(
       {
         name: "obsidian-mcp",
@@ -225,7 +228,7 @@ export class ObsidianServer {
         // Validate and transform arguments using tool's schema handler
         const validatedArgs = tool.inputSchema.parse(args);
         
-        // Execute tool with validated arguments
+        // Execute tool with validated arguments 
         const result = await tool.handler(validatedArgs);
         
         return {

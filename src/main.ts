@@ -39,92 +39,102 @@ interface VaultConfig {
   path: string;
 }
 
+// Helper function to parse --vault arguments
+function parseVaultArgs(args: string[]): VaultConfig[] {
+  const vaultConfigs: VaultConfig[] = [];
+  const seenNames: Set<string> = new Set();
+  const seenPaths: Set<string> = new Set();
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--vault' && i + 1 < args.length) {
+      const vaultArg = args[i + 1];
+      const separatorIndex = vaultArg.indexOf(':');
+
+      if (separatorIndex === -1 || separatorIndex === 0 || separatorIndex === vaultArg.length - 1) {
+        throw new Error(`Invalid --vault format: "${vaultArg}". Expected "name:/path/to/vault".`);
+      }
+
+      const name = vaultArg.substring(0, separatorIndex);
+      const rawPath = vaultArg.substring(separatorIndex + 1);
+
+      const sanitizedName = sanitizeVaultName(name);
+      if (!sanitizedName) {
+         throw new Error(`Invalid vault name "${name}". Names must be alphanumeric (a-z, A-Z, 0-9), hyphen (-), or underscore (_) and start/end with alphanumeric.`);
+      }
+      if (sanitizedName !== name) {
+        console.warn(`Vault name "${name}" sanitized to "${sanitizedName}"`);
+      }
+
+      if (seenNames.has(sanitizedName)) {
+        throw new Error(`Duplicate vault name "${sanitizedName}" provided.`);
+      }
+      seenNames.add(sanitizedName);
+
+      // Basic path check before full validation
+      if (!rawPath || rawPath.trim() === '') {
+         throw new Error(`Empty path provided for vault name "${sanitizedName}".`);
+      }
+       if (checkPathCharacters(rawPath)) {
+         throw new Error(`Vault path for "${sanitizedName}" contains invalid characters: ${rawPath}`);
+       }
+
+      // Add for now, full path validation happens later
+      vaultConfigs.push({ name: sanitizedName, path: rawPath });
+      i++; // Skip the value part
+    } else if (args[i].startsWith('--')) {
+        // Optional: Handle other potential future arguments or warn about unknown ones
+        console.warn(`Ignoring unknown argument: ${args[i]}`);
+        // If the unknown arg might have a value, skip it too: if (i + 1 < args.length && !args[i+1].startsWith('--')) i++;
+    } else {
+        // Optional: Handle positional arguments or warn
+        console.warn(`Ignoring unexpected positional argument: ${args[i]}`);
+    }
+  }
+
+  if (vaultConfigs.length === 0) {
+     throw new Error("No vaults provided. Use --vault name:/path/to/vault argument to specify at least one vault.");
+  }
+
+  return vaultConfigs;
+}
+
 async function main() {
   // Constants
   const MAX_VAULTS = 10; // Reasonable limit to prevent resource issues
 
-  const vaultArgs = process.argv.slice(2);
   let vaultConfigs: VaultConfig[] = [];
+  const providedVaults: { name: string, path: string }[] = []; // Store initially parsed vaults for validation
 
-  if (vaultArgs.length === 0) {
-    // --- NO ARGUMENTS PROVIDED ---
-    // Use a default configuration. The client is expected to provide vault context via tool args.
-    console.error("No vault paths provided via command line. Using default configuration.");
-    console.error("Server expects vault context ('vault' name) in tool arguments.");
+  try {
+    const args = process.argv.slice(2);
+    providedVaults.push(...parseVaultArgs(args)); // Parse --vault arguments
 
-    // Define your default vault(s) here
-    const defaultVaultPath = "/home/justin/Documents/Work/Vault/Minerva"; // User's Minerva path
-    const defaultVaultName = "minerva"; // Logical name for the client to use
-
-    try {
-      // Basic validation for the default path
-      const obsidianConfigPath = path.join(defaultVaultPath, '.obsidian');
-      const stats = await fs.stat(obsidianConfigPath);
-      if (!stats.isDirectory()) {
-        throw new Error(".obsidian exists but is not a directory.");
-      }
-      vaultConfigs = [{ name: defaultVaultName, path: path.resolve(defaultVaultPath) }];
-      console.error(`Default vault configured: name='${defaultVaultName}', path='${vaultConfigs[0].path}'`);
-
-    } catch (error: any) {
-      console.error(`Error validating default vault path '${defaultVaultPath}': ${error.message}`);
-      console.error("Please ensure the default vault path is correct and the vault is initialized in Obsidian.");
-      process.stdout.write(JSON.stringify({
-        jsonrpc: "2.0",
-        error: {
-          code: ErrorCode.InvalidRequest,
-          message: `Failed to initialize with default vault '${defaultVaultPath}': ${error.message}`
-        },
-        id: null
-      }));
-      process.exit(1);
+    if (providedVaults.length === 0) {
+      throw new Error("Configuration error: No vaults were successfully parsed from arguments."); // Should be caught by parseVaultArgs, but safety check
     }
 
-  } else {
-    // --- ARGUMENTS PROVIDED ---
-    // Use existing logic to parse and validate arguments
-    console.error(`Received ${vaultArgs.length} vault path(s) from command line. Validating...`);
-
-    if (vaultArgs.length > MAX_VAULTS) {
-      const errorMessage = `Too many vault paths provided. Maximum allowed is ${MAX_VAULTS}.`;
-      console.error(`Error: ${errorMessage}`);
-      process.stdout.write(JSON.stringify({
-        jsonrpc: "2.0",
-        error: { code: ErrorCode.InvalidRequest, message: errorMessage },
-        id: null
-      }));
-      process.exit(1);
+    if (providedVaults.length > MAX_VAULTS) {
+      throw new Error(`Too many vaults specified (${providedVaults.length}). Maximum allowed is ${MAX_VAULTS}.`);
     }
 
+    console.error(`Received ${providedVaults.length} vault configuration(s) from command line. Validating...`);
 
-    // Validate and normalize vault paths
-    const normalizedPaths = await Promise.all(vaultArgs.map(async (vaultPath, index) => {
+    // Validate and normalize vault paths concurrently
+    const validatedConfigs = await Promise.all(providedVaults.map(async ({ name, path: rawPath }) => {
       try {
         // Expand home directory if needed
-        const expandedPath = vaultPath.startsWith('~') ?
-          path.join(os.homedir(), vaultPath.slice(1)) :
-          vaultPath;
+        const expandedPath = rawPath.startsWith('~') ?
+          path.join(os.homedir(), rawPath.slice(1)) :
+          rawPath;
 
         // Normalize and convert to absolute path
         const normalizedPath = path.normalize(expandedPath)
-          .replace(/[\\/\\\\]+$/, ''); // Remove trailing slashes
+          .replace(/[\\\\/\\\\\\\\]+$/, ''); // Remove trailing slashes
         const absolutePath = path.resolve(normalizedPath);
 
-        // Validate path is absolute and safe
+        // Validate path is absolute
         if (!path.isAbsolute(absolutePath)) {
-          const errorMessage = `Vault path must be absolute: ${vaultPath}`;
-          console.error(`Error: ${errorMessage}`);
-
-          process.stdout.write(JSON.stringify({
-            jsonrpc: "2.0",
-            error: {
-              code: ErrorCode.InvalidRequest,
-              message: errorMessage
-            },
-            id: null
-          }));
-
-          process.exit(1);
+          throw new Error(`Vault path must be absolute: ${rawPath}`);
         }
 
         // Check for suspicious paths and local filesystem
@@ -134,193 +144,92 @@ async function main() {
         ]);
 
         if (localPathIssue) {
-          const errorMessage = `Invalid vault path (${localPathIssue}): ${vaultPath}\\n` +
+          throw new Error(`Invalid vault path (${localPathIssue}): ${rawPath}\\n` +
             `For reliability and security reasons, vault paths must:\\n` +
             `- Be on a local filesystem\\n` +
             `- Not use network drives or mounts\\n` +
-            `- Not contain symlinks that point outside their directory`;
-
-          console.error(`Error: ${errorMessage}`);
-
-          process.stdout.write(JSON.stringify({
-            jsonrpc: "2.0",
-            error: {
-              code: ErrorCode.InvalidRequest,
-              message: errorMessage
-            },
-            id: null
-          }));
-
-          process.exit(1);
+            `- Not contain symlinks that point outside their directory`);
         }
 
         if (suspiciousReason) {
-          const errorMessage = `Invalid vault path (${suspiciousReason}): ${vaultPath}\\n` +
+           throw new Error(`Invalid vault path (${suspiciousReason}): ${rawPath}\\n` +
             `For security reasons, vault paths cannot:\\n` +
             `- Point to system directories\\n` +
             `- Use hidden directories (except .obsidian)\\n` +
             `- Point to the home directory root\\n` +
-            `Please choose a dedicated directory for your vault`;
-
-          console.error(`Error: ${errorMessage}`);
-
-          process.stdout.write(JSON.stringify({
-            jsonrpc: "2.0",
-            error: {
-              code: ErrorCode.InvalidRequest,
-              message: errorMessage
-            },
-            id: null
-          }));
-
-          process.exit(1);
+            `Please choose a dedicated directory for your vault`);
         }
 
-        try {
-          // Check if path exists and is a directory
-          const stats = await fs.stat(absolutePath);
-          if (!stats.isDirectory()) {
-            const errorMessage = `Vault path must be a directory: ${vaultPath}`;
-            console.error(`Error: ${errorMessage}`);
+         // Check if path exists and is a directory
+         const stats = await fs.stat(absolutePath);
+         if (!stats.isDirectory()) {
+           throw new Error(`Vault path must be a directory: ${rawPath}`);
+         }
 
-            process.stdout.write(JSON.stringify({
-              jsonrpc: "2.0",
-              error: {
-                code: ErrorCode.InvalidRequest,
-                message: errorMessage
-              },
-              id: null
-            }));
+         // Check if path is readable and writable
+         await fs.access(absolutePath, fsConstants.R_OK | fsConstants.W_OK);
 
-            process.exit(1);
-          }
+         // Check if this is a valid Obsidian vault
+         const obsidianConfigPath = path.join(absolutePath, '.obsidian');
+         const obsidianAppConfigPath = path.join(obsidianConfigPath, 'app.json');
 
-          // Check if path is readable and writable
-          await fs.access(absolutePath, fsConstants.R_OK | fsConstants.W_OK);
+         try {
+           // Check .obsidian directory
+           const configStats = await fs.stat(obsidianConfigPath);
+           if (!configStats.isDirectory()) {
+             throw new Error(`Invalid Obsidian vault configuration in ${rawPath}\\n` +
+               `The .obsidian folder exists but is not a directory\\n` +
+               `Try removing it and reopening the vault in Obsidian`);
+           }
 
-          // Check if this is a valid Obsidian vault
-          const obsidianConfigPath = path.join(absolutePath, '.obsidian');
-          const obsidianAppConfigPath = path.join(obsidianConfigPath, 'app.json');
+           // Check app.json to verify it's properly initialized
+           await fs.access(obsidianAppConfigPath, fsConstants.R_OK);
 
-          try {
-            // Check .obsidian directory
-            const configStats = await fs.stat(obsidianConfigPath);
-            if (!configStats.isDirectory()) {
-              const errorMessage = `Invalid Obsidian vault configuration in ${vaultPath}\\n` +
-                `The .obsidian folder exists but is not a directory\\n` +
-                `Try removing it and reopening the vault in Obsidian`;
+         } catch (error) {
+           if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+             throw new Error(`Not a valid Obsidian vault (${rawPath})\\n` +
+               `Vault requires a valid .obsidian directory with configuration (e.g., app.json)\\n` +
+               `Please open this path in Obsidian first to initialize it.`);
+           }
+           // Re-throw other stat/access errors or validation errors from above
+           throw error;
+         }
 
-              console.error(`Error: ${errorMessage}`);
+        // If all checks pass, return the validated config
+        return { name, path: absolutePath };
 
-              process.stdout.write(JSON.stringify({
-                jsonrpc: "2.0",
-                error: {
-                  code: ErrorCode.InvalidRequest,
-                  message: errorMessage
-                },
-                id: null
-              }));
-
-              process.exit(1);
-            }
-
-            // Check app.json to verify it's properly initialized
-            await fs.access(obsidianAppConfigPath, fsConstants.R_OK);
-
-          } catch (error) {
-            if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-              const errorMessage = `Not a valid Obsidian vault (${vaultPath})\\n` +
-                `Vault requires a valid .obsidian directory with configuration (e.g., app.json)\\n` +
-                `Please open this path in Obsidian first to initialize it.`;
-
-              console.error(`Error: ${errorMessage}`);
-
-              process.stdout.write(JSON.stringify({
-                jsonrpc: "2.0",
-                error: {
-                  code: ErrorCode.InvalidRequest,
-                  message: errorMessage
-                },
-                id: null
-              }));
-
-              process.exit(1);
-            }
-            throw error; // Re-throw other stat/access errors
-          }
-
-          return absolutePath;
-
-        } catch (error: any) {
-          const errorMessage = `Error accessing vault path ${vaultPath}: ${error.message}`;
-          console.error(`Error: ${errorMessage}`);
-          process.stdout.write(JSON.stringify({
-            jsonrpc: "2.0",
-            error: {
-              code: ErrorCode.InvalidRequest,
-              message: errorMessage
-            },
-            id: null
-          }));
-          process.exit(1);
-        }
-      } catch (error) {
-        // Handle any unexpected errors during path processing
-        const errorMessage = `Unexpected error processing vault path ${vaultPath}: ${error instanceof Error ? error.message : String(error)}`;
-        console.error(`Error: ${errorMessage}`);
-        process.stdout.write(JSON.stringify({
-          jsonrpc: "2.0",
-          error: { code: ErrorCode.InternalError, message: errorMessage },
-          id: null
-        }));
-        process.exit(1);
+      } catch (validationError: any) {
+        // Add vault name context to the error
+        throw new Error(`Validation failed for vault "${name}" (${rawPath}): ${validationError.message}`);
       }
     }));
 
-
-    // Check for duplicate paths
-    const uniquePaths = new Set(normalizedPaths);
-    if (uniquePaths.size !== normalizedPaths.length) {
-      const errorMessage = "Duplicate vault paths provided. Each path must be unique.";
-      console.error(`Error: ${errorMessage}`);
-      process.stdout.write(JSON.stringify({
-        jsonrpc: "2.0",
-        error: { code: ErrorCode.InvalidRequest, message: errorMessage },
-        id: null
-      }));
-      process.exit(1);
-    }
-
-    // Check for overlapping paths
+    // Check for overlapping paths *after* normalization
     try {
-      checkPathOverlap(normalizedPaths);
-    } catch (error) {
-        const errorMessage = error instanceof McpError ? error.message : String(error);
-        console.error(`Error: ${errorMessage}`);
-        process.stdout.write(JSON.stringify({
-            jsonrpc: "2.0",
-            error: { code: ErrorCode.InvalidRequest, message: errorMessage },
-            id: null
-        }));
-        process.exit(1);
+       checkPathOverlap(validatedConfigs.map(vc => vc.path));
+    } catch (overlapError: any) {
+        throw new Error(`Vault path overlap detected: ${overlapError.message}`);
     }
 
-    // Generate vault names and construct VaultConfig objects
-    const vaultNames: { [name: string]: number } = {};
-    vaultConfigs = normalizedPaths.map(absPath => {
-      const baseName = sanitizeVaultName(path.basename(absPath));
-      let name = baseName;
-      let count = 1;
-      while (vaultNames[name]) {
-        count++;
-        name = `${baseName}-${count}`;
-      }
-      vaultNames[name] = 1;
-      return { name, path: absPath };
-    });
-    console.error("Validated vault configurations:", vaultConfigs);
-  } // End of argument processing logic
+    // Assign validated configs
+    vaultConfigs = validatedConfigs;
 
+    console.error("Vault validation successful:");
+    vaultConfigs.forEach(vc => console.error(`- Name: '${vc.name}', Path: '${vc.path}'`));
+
+  } catch (error: any) {
+    // Catch errors from parsing or validation
+    console.error(`Error during initialization: ${error.message}`);
+    process.stdout.write(JSON.stringify({
+      jsonrpc: "2.0",
+      error: {
+        code: ErrorCode.InvalidParams, // Use InvalidParams for config issues
+        message: `Server configuration error: ${error.message}`
+      },
+      id: null
+    }));
+    process.exit(1);
+  }
 
   // --- SERVER INITIALIZATION ---
   if (vaultConfigs.length === 0) {
@@ -340,52 +249,56 @@ async function main() {
 
   let server: ObsidianServer;
   try {
+    // Initialize the server with the validated vault configurations
     server = new ObsidianServer(vaultConfigs);
-  } catch (error: any) {
-     console.error(`Failed to initialize ObsidianServer: ${error.message}`);
-     process.stdout.write(JSON.stringify({
-        jsonrpc: "2.0",
-        error: {
-          code: ErrorCode.InternalError,
-          message: `Server initialization failed: ${error.message}`
-        },
-        id: null
-      }));
-     process.exit(1);
-  }
 
+    // Create map for tool factories AFTER server initialization
+    const vaultsMap = new Map<string, string>();
+    vaultConfigs.forEach(vc => vaultsMap.set(vc.name, vc.path));
 
-  // Create map for tool factories
-  const vaultsMap = new Map(vaultConfigs.map(v => [v.name, v.path]));
-
-  // Register tools
-  server.registerTool(createReadNoteTool(vaultsMap));
-  server.registerTool(createCreateNoteTool(vaultsMap));
-  server.registerTool(createEditNoteTool(vaultsMap));
-  server.registerTool(createMoveNoteTool(vaultsMap));
-  server.registerTool(createDeleteNoteTool(vaultsMap));
-  server.registerTool(createCreateDirectoryTool(vaultsMap));
-  server.registerTool(createSearchVaultTool(vaultsMap));
-  server.registerTool(createAddTagsTool(vaultsMap));
-  server.registerTool(createRemoveTagsTool(vaultsMap));
-  server.registerTool(createRenameTagTool(vaultsMap));
-  server.registerTool(createAddAliasTool(vaultsMap));
-  server.registerTool(createRemoveAliasTool(vaultsMap));
-  server.registerTool(createListAliasesTool(vaultsMap));
-  server.registerTool(createListFilesTool(vaultsMap));
-  server.registerTool(createListDirectoryTool(vaultsMap));
-  server.registerTool(createListBookmarksTool(vaultsMap));
-  server.registerTool(createGetDailyNotePathTool(vaultsMap));
-  server.registerTool(createGetTasksInNoteTool(vaultsMap));
-  server.registerTool(createToggleTaskTool(vaultsMap));
-
-  // Conditionally register ListAvailableVaultsTool only if multiple vaults configured
-  if (vaultConfigs.length > 1) {
+    // Register tools (pass vaultsMap to tool factories)
+    server.registerTool(createCreateNoteTool(vaultsMap));
+    // Conditionally register ListAvailableVaultsTool only if multiple vaults configured
+    if (vaultsMap.size > 1) {
       server.registerTool(createListAvailableVaultsTool(vaultsMap));
+    }
+    server.registerTool(createEditNoteTool(vaultsMap));
+    server.registerTool(createSearchVaultTool(vaultsMap));
+    server.registerTool(createMoveNoteTool(vaultsMap));
+    server.registerTool(createCreateDirectoryTool(vaultsMap));
+    server.registerTool(createDeleteNoteTool(vaultsMap));
+    server.registerTool(createAddTagsTool(vaultsMap));
+    server.registerTool(createRemoveTagsTool(vaultsMap));
+    server.registerTool(createRenameTagTool(vaultsMap));
+    server.registerTool(createReadNoteTool(vaultsMap));
+    server.registerTool(createAddAliasTool(vaultsMap));
+    server.registerTool(createRemoveAliasTool(vaultsMap));
+    server.registerTool(createListAliasesTool(vaultsMap));
+    server.registerTool(createListFilesTool(vaultsMap));
+    server.registerTool(createListDirectoryTool(vaultsMap));
+    server.registerTool(createListBookmarksTool(vaultsMap));
+    server.registerTool(createGetDailyNotePathTool(vaultsMap));
+    server.registerTool(createGetTasksInNoteTool(vaultsMap));
+    server.registerTool(createToggleTaskTool(vaultsMap));
+
+    // Register prompts (Handled by server constructor now)
+    // registerPrompt(listVaultsPrompt); // REMOVED redundant call
+
+  } catch (error: any) {
+     // Catch errors during server or tool registration
+     console.error(`Failed during server initialization or tool registration: ${error.message}`);
+     process.stdout.write(JSON.stringify({
+      jsonrpc: "2.0",
+      error: {
+        code: ErrorCode.InternalError,
+        message: `Server initialization failed: ${error.message}`
+      },
+      id: null
+    }));
+    process.exit(1);
   }
 
-
-  // Graceful shutdown handling
+  // Graceful shutdown handler
   let isShuttingDown = false;
   async function shutdown(signal: string) {
     if (isShuttingDown) return;

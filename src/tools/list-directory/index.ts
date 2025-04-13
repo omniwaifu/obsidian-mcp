@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { promises as fs } from "fs";
 import path from "path";
-import { McpError } from "@modelcontextprotocol/sdk/types.js";
+import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { validateVaultPath } from "../../utils/path.js";
 import { handleFsError } from "../../utils/errors.js";
 import { createToolResponse } from "../../utils/responses.js";
@@ -40,7 +40,7 @@ async function listDirectoryContents(
   try {
     const stats = await fs.stat(targetPath);
     if (!stats.isDirectory()) {
-      throw new McpError("path_not_directory", `Path is not a directory: ${args.path}`);
+      throw new McpError(ErrorCode.InvalidParams, `Path is not a directory: ${args.path}`);
     }
 
     const dirents = await fs.readdir(targetPath, { withFileTypes: true });
@@ -57,7 +57,7 @@ async function listDirectoryContents(
        throw error;
      }
      if (error.code === 'ENOENT') {
-        throw new McpError("path_not_found", `Directory not found: ${args.path}`);
+        throw new McpError(ErrorCode.InvalidParams, `Directory not found: ${args.path}`);
      }
     throw handleFsError(error, 'list directory contents');
   }
@@ -72,14 +72,23 @@ Examples:
 - List root: { "vault": "my_vault" }
 - List subfolder: { "vault": "my_vault", "path": "documents/projects" }`,
     schema,
-    handler: async (args, vaultPath, _vaultName) => {
-      const result = await listDirectoryContents(args, vaultPath);
-      // Format the result directly for the tool response
-      return createToolResponse({
-         success: true,
-         message: `Contents of '${args.path}' listed successfully.`,
-         data: result // Contains the { items: [...] } structure
-      });
+    handler: async (args, vaultPath, vaultName) => {
+      // --- DEBUG LOG ---
+      // console.error(`[DEBUG] list-directory Handler - Received vaultName: ${vaultName}, vaultPath: ${vaultPath}`);
+      // --- END DEBUG LOG ---
+      try {
+          const result = await listDirectoryContents(args, vaultPath);
+          const message = result.items.length > 0 
+            ? `Contents of '${args.path}':\n${result.items.join('\n')}`
+            : `Directory '${args.path}' is empty.`;
+          return createToolResponse(message);
+      } catch (error: any) {
+          if (error instanceof McpError) {
+            throw error;
+          }
+          console.error(`Error listing directory '${args.path}' in vault '${args.vault}':`, error);
+          throw handleFsError(error, 'list directory');
+      }
     }
   }, vaults);
 } 

@@ -48,17 +48,23 @@ To run the server directly in your terminal (e.g., for debugging the server itse
 # Build first if you haven't
 bun run build
 
-# Run using node
-node <absolute-path-to-your-project>/build/main.js
+# Run using node, specifying vaults via arguments
+# Single vault:
+node <absolute-path-to-your-project>/build/main.js --vault my_vault:/path/to/your/vault
 
-# Or using bun
-bun <absolute-path-to-your-project>/build/main.js
+# Multiple vaults:
+node <absolute-path-to-your-project>/build/main.js \\
+  --vault personal:/path/to/your/personal/vault
+
+# Or using bun (same argument format)
+bun <absolute-path-to-your-project>/build/main.js --vault my_vault:/path/to/your/vault
 ```
-The server will start, potentially use a default vault configuration if defined in `src/main.ts`, and listen for JSON-RPC messages on standard input/output.
+
+The server requires at least one vault specified via the `--vault name:/path/to/vault` argument. It will start and listen for JSON-RPC messages on standard input/output.
 
 ### Example: Claude Desktop Configuration (Using Local Build)
 
-Configure Claude Desktop (or a similar client) to run your specific build:
+Configure your MCP client (e.g., Claude Desktop) to run the server using `node` and the `--vault` arguments. Find your client's config file:
 
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Windows: `%APPDATA%\\Claude\\claude_desktop_config.json`
@@ -69,20 +75,23 @@ Configure Claude Desktop (or a similar client) to run your specific build:
         "obsidian": {
             "command": "node",
             "args": [
-                "/path/to/your/fork/obsidian-mcp/build/main.js"
-            ],
-             "config": {
-                 "availableVaults": [
-                    { "name": "minerva", "path": "/path/to/your/minerva/vault" },
-                    { "name": "personal", "path": "/path/to/your/personal/vault" }
-                 ]
-            }
+                "/path/to/your/fork/obsidian-mcp/build/main.js",
+                "--vault", "personal:/path/to/your/personal/vault" 
+            ]
         }
     }
 }
 ```
 
-**Note:** The exact configuration for `availableVaults` and how the client uses it depends on the client's implementation. The server expects the `vault` name (e.g., `"minerva"`) within the arguments of each tool call.
+**Explanation:**
+
+-   `command`: Should be `node`.
+-   `args`: 
+    -   The first argument MUST be the **absolute path** to the `build/main.js` file in your cloned project.
+    -   Subsequent arguments configure the vaults.
+    -   Use `--vault` followed by `name:/path/to/vault` for *each* vault you want the server to access.
+        -   `name`: A short, alphanumeric name (underscores/hyphens allowed) you will use in tool calls (e.g., `minerva`).
+        -   `path`: The **absolute path** to the vault directory.
 
 Restart the client after saving the configuration.
 
@@ -134,10 +143,10 @@ The server exposes tools via the Model Context Protocol. The exact list can be r
 -   `toggle-task`: Toggle the completion status of a task on a specific line.
 -   _(Potentially others like remove-tags, etc.)_
 
-**Tool Usage:** All tools that operate on files (`read-note`, `edit-note`, `create-note`, `move-note`, `add-alias`, `add-tags`, `list-files`, `search-vault` with `path:`, `list-directory`, `get-tasks-in-note`, `toggle-task`) require a `vault` argument specifying the **name** of the target vault (which must be known to the client and correspond to a vault the server is implicitly configured for by the client environment). They also require a `path` argument relative to the vault root (where applicable, e.g., not for `list-bookmarks` or `get-daily-note-path` which only need the vault).
+**Tool Usage:** All tools that operate on files (`read-note`, `edit-note`, `create-note`, `move-note`, `add-alias`, `add-tags`, `list-files`, `search-vault` with `path:`, `list-directory`, `get-tasks-in-note`, `toggle-task`, etc.) require a `vault` argument specifying the **name** of the target vault (e.g., `"minerva"`, `"personal"` from the configuration example above). They also require a `path` argument relative to the vault root (where applicable).
 
 Example `read-note` arguments:
-`{ "vault": "work", "path": "projects/alpha/meeting-notes.md" }`
+`{ "vault": "personal", "path": "journal/2024-01-15.md" }`
 
 ## Testing
 
@@ -185,17 +194,17 @@ This server requires access to your Obsidian vault directory. Access is typicall
 Common issues:
 
 1.  **Server connection errors in Client (e.g., Claude Desktop)**
-    *   Verify the client's MCP server configuration (`command`, `args`).
-    *   Ensure the client is correctly configured to provide the `vault` name in tool arguments if required.
+    *   Verify the client's MCP server configuration (`command`, `args`), ensuring the path to `build/main.js` and the vault paths are correct and absolute.
+    *   Ensure the `--vault` arguments are formatted correctly (`name:/path/to/vault`).
     *   Check client logs.
 
 2.  **Tool errors ("Vault not found", "Path validation failed", etc.)**
-    *   Ensure the `vault` name sent in the tool arguments matches a vault known/configured in the client environment.
+    *   Ensure the `vault` name sent in the tool arguments exactly matches one of the names provided in the `--vault` arguments during server startup.
     *   Ensure the `path` argument is relative and correct.
     *   Check server logs if running directly, or client logs.
 
 3.  **Permission errors**
-    *   Ensure the user running the client (and thus the server process) has read/write permissions for the configured vault directories.
+    *   Ensure the user running the client (and thus the server process) has read/write permissions for all configured vault directories.
 
 ## License
 
