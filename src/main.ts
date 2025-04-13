@@ -18,6 +18,7 @@ import { createListFilesTool } from "./tools/list-files/index.js";
 import { createListDirectoryTool } from "./tools/list-directory/index.js";
 import { createGetBacklinksTool } from "./tools/get-backlinks/index.js";
 import { createListBookmarksTool } from "./tools/list-bookmarks/index.js";
+import { createGetDailyNotePathTool } from "./tools/get-daily-note-path/index.js";
 import { listVaultsPrompt } from "./prompts/list-vaults/index.js";
 import { registerPrompt } from "./utils/prompt-factory.js";
 import path from "path";
@@ -374,6 +375,7 @@ async function main() {
   server.registerTool(createListDirectoryTool(vaultsMap));
   server.registerTool(createGetBacklinksTool(vaultsMap));
   server.registerTool(createListBookmarksTool(vaultsMap));
+  server.registerTool(createGetDailyNotePathTool(vaultsMap));
 
   // Conditionally register ListAvailableVaultsTool only if multiple vaults configured
   if (vaultConfigs.length > 1) {
