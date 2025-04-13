@@ -318,7 +318,7 @@ Supports operators like 'path:' to limit search to a folder and 'file:' to limit
 Examples:
 - Text search: { "query": "hello world" }
 - Tag search: { "query": "tag:status/active" }
-- Path scope: { "query": "term path:journal/2024" }
+- Path scope: { "query": "term path:project/notes" }
 - Filename scope: { "query": "term file:meeting" }
 - Combined: { "query": "report path:projects file:Q3" }
 Note: Use 'list-vaults' prompt to see available vaults.`,

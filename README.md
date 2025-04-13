@@ -20,6 +20,7 @@ This MCP has read and write access (if you allow it). Please. PLEASE backup your
 - Find backlinks to notes
 - List bookmarks from the core Bookmarks plugin
 - Get the path for today's daily note
+    - Path is cached, so if you change your path to daily notes, you might need to wait a bit for the cache to update.
 - List and toggle basic Markdown tasks in notes
 - Configurable vault access
 
@@ -155,6 +156,23 @@ bun test
 Run only E2E tests:
 ```bash
 bun test e2e/
+```
+
+### Test Queries
+
+```md
+    1. What is the path for today's daily note in the "my_vault" vault?
+    2. Create that daily note if it doesn't exist, with the title "# Today's Tasks and Notes" and add the following tasks under it:
+    - [ ] Plan weekend activities
+    - [ ] Read chapter 3 of 'Project X'
+    - [ ] Call Mom
+    3. List the tasks currently in today's daily note.
+    4. Mark the 'Call Mom' task as complete.
+    5. List the tasks again to confirm the change.
+    6. Create a new note in the root called "Test Backlink Note.md" with the content "This note links to [[Today's daily note path]]". (Replace 'Today's daily note path' with the actual path obtained in step 1).
+    7. Find all backlinks for today's daily note.
+    8. List the contents of the root directory.
+    9. List my bookmarks.
 ```
 
 ## Security

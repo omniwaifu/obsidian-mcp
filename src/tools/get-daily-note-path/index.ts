@@ -6,6 +6,15 @@ import { handleFsError } from "../../utils/errors.js";
 import { createToolResponse } from "../../utils/responses.js";
 import { createTool } from "../../utils/tool-factory.js";
 import { ensureMarkdownExtension } from "../../utils/path.js";
+import { fileExists } from "../../utils/files.js";
+
+// --- Cache Setup ---
+interface CachedConfig {
+    config: DailyNotesConfig;
+    timestamp: number;
+}
+const dailyNoteConfigCache = new Map<string, CachedConfig>();
+const CACHE_DURATION_MS = 60 * 1000; // Cache for 60 seconds
 
 // --- Configuration Interfaces ---
 interface DailyNotesConfig {
@@ -58,35 +67,60 @@ function formatSimpleDate(date: Date, formatString: string): string {
 
 // --- Core Logic ---
 async function getDailyNotePath(
-  _args: GetDailyNotePathInput,
-  vaultPath: string
+  args: GetDailyNotePathInput,
+  vaultPath: string,
+  vaultName: string // Need vaultName for caching key
 ): Promise<{ path: string }> {
-  const configFilePath = path.join(vaultPath, '.obsidian', 'daily-notes.json');
+  const now = Date.now();
+  const cachedEntry = dailyNoteConfigCache.get(vaultName);
   let config: DailyNotesConfig;
 
-  try {
-    const content = await fs.readFile(configFilePath, 'utf8');
-    config = JSON.parse(content) as DailyNotesConfig;
-  } catch (error: any) {
-    if (error.code === 'ENOENT') {
-      throw new McpError(ErrorCode.InvalidParams, "Daily Notes configuration file (daily-notes.json) not found in .obsidian folder. Is the plugin enabled and configured?");
+  // Check cache validity
+  if (cachedEntry && (now - cachedEntry.timestamp < CACHE_DURATION_MS)) {
+    console.log(`[getDailyNotePath] Using cached config for vault: '${vaultName}'`);
+    config = cachedEntry.config;
+  } else {
+    // Cache miss or expired
+    console.log(`[getDailyNotePath] Cache miss/expired for vault: '${vaultName}'. Reading config file.`);
+    const configFilePath = path.join(vaultPath, '.obsidian', 'daily-notes.json');
+    try {
+      const content = await fs.readFile(configFilePath, 'utf8');
+      config = JSON.parse(content) as DailyNotesConfig;
+      // Update cache
+      dailyNoteConfigCache.set(vaultName, { config, timestamp: now });
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        // Don't cache if file not found, but throw error
+        throw new McpError(ErrorCode.InvalidParams, "Daily Notes configuration file (daily-notes.json) not found in .obsidian folder. Is the plugin enabled and configured?");
+      }
+      if (error instanceof SyntaxError) {
+        // Don't cache if parsing fails
+        throw new McpError(ErrorCode.InternalError, `Error parsing daily-notes.json: ${error.message}`);
+      }
+      // Don't cache for other read errors
+      throw handleFsError(error, 'read daily notes config');
     }
-    if (error instanceof SyntaxError) {
-      throw new McpError(ErrorCode.InternalError, `Error parsing daily-notes.json: ${error.message}`);
-    }
-    throw handleFsError(error, 'read daily notes config');
   }
 
+  // Proceed with using the config (either cached or freshly read)
   if (!config.format) {
+      // If config is invalid (e.g., missing format), potentially invalidate cache?
+      // For now, we just throw. If the file *was* read, it would have been cached above.
+      // If it came from cache, it implies it was valid previously.
+      dailyNoteConfigCache.delete(vaultName); // Invalidate cache if format missing
       throw new McpError(ErrorCode.InvalidRequest, "Daily notes configuration is missing the 'format' field.");
   }
   const folder = config.folder || ''; 
+  // Logging now happens *before* date formatting
+  console.log(`[getDailyNotePath] Using folder: '${folder}' (from config: '${config.folder}')`); 
 
   const today = new Date();
   let formattedDate: string;
   try {
       formattedDate = formatSimpleDate(today, config.format);
   } catch (formatError) {
+      // If formatting fails with cached config, invalidate cache
+      if (cachedEntry) { dailyNoteConfigCache.delete(vaultName); }
       if (formatError instanceof McpError) throw formatError;
       throw new McpError(ErrorCode.InvalidParams, `Failed to format date using format string "${config.format}": ${(formatError as Error).message}`);
   }
@@ -106,9 +140,10 @@ export function createGetDailyNotePathTool(vaults: Map<string, string>) {
     name: "get-daily-note-path",
     description: `Calculates the expected relative path for today's daily note based on the Daily Notes core plugin settings (.obsidian/daily-notes.json).\n\nExamples:\n- Get path for vault: { "vault": "my_vault" }`,
     schema,
-    handler: async (args, vaultPath, _vaultName) => {
+    handler: async (args, vaultPath, vaultName) => {
       try {
-        const result = await getDailyNotePath(args, vaultPath);
+        // Pass vaultName to the core logic function for caching
+        const result = await getDailyNotePath(args, vaultPath, vaultName);
         return createToolResponse(`Today's daily note path: ${result.path}`);
       } catch (error: any) {
          if (error instanceof McpError) {
