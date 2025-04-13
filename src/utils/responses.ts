@@ -8,6 +8,7 @@ import {
   TagChange,
   SearchResult
 } from '../types.js';
+import path from 'path';
 
 /**
  * Creates a standardized tool response
@@ -162,5 +163,96 @@ export function formatSearchResult(result: SearchOperationResult): string {
     });
   }
   
+  return parts.join('\n');
+}
+
+/**
+ * Defines the structure for backlink results (import from types or define locally if needed)
+ */
+interface BacklinksResult {
+    backlinks: string[]; 
+}
+
+/**
+ * Formats backlink results
+ */
+export function formatBacklinksResult(result: BacklinksResult, targetPath: string): string {
+  const parts: string[] = [];
+  
+  if (result.backlinks.length === 0) {
+    parts.push(`No backlinks found for '${targetPath}'.`);
+  } else {
+    parts.push(`Found ${result.backlinks.length} backlink(s) for '${targetPath}':`);
+    result.backlinks.forEach(link => {
+      parts.push(`  - ${link}`);
+    });
+  }
+  
+  return parts.join('\n');
+}
+
+/**
+ * Represents a bookmark item (could be imported from types if defined centrally)
+ */
+interface BookmarkItem {
+  type: string;
+  ctime?: number;
+  path?: string;
+  query?: string;
+  title?: string;
+  items?: BookmarkItem[]; // For groups
+}
+
+/**
+ * Represents the structure of the bookmarks.json file
+ */
+interface BookmarksFile {
+  items: BookmarkItem[];
+}
+
+/**
+ * Helper function to format a single bookmark item recursively
+ */
+function formatSingleBookmark(item: BookmarkItem, indentLevel: number = 0): string {
+  const indent = '  '.repeat(indentLevel);
+  let line = `${indent}- [${item.type}]`;
+
+  // Add title or derive one
+  if (item.title) {
+    line += ` ${item.title}`;
+  } else if (item.type === 'file' && item.path) {
+    line += ` ${path.basename(item.path)}`; // Use basename for files if no title
+  } else if (item.type === 'search' && item.query) {
+    line += ` Search: ${item.query}`;
+  }
+
+  // Add details based on type
+  if (item.type === 'file' && item.path) {
+    line += ` (${item.path})`;
+  } else if ((item.type === 'heading' || item.type === 'block') && item.path) {
+    line += ` in (${item.path})`; // Assuming path includes heading/block info
+  }
+
+  // Recursively format group items
+  if (item.type === 'group' && item.items && item.items.length > 0) {
+    line += '\n' + item.items.map(subItem => formatSingleBookmark(subItem, indentLevel + 1)).join('\n');
+  }
+
+  return line;
+}
+
+/**
+ * Formats the entire bookmarks data
+ */
+export function formatBookmarksResult(result: BookmarksFile): string {
+  if (!result.items || result.items.length === 0) {
+    return 'No bookmarks found.';
+  }
+
+  const parts: string[] = ['Bookmarks:'];
+  result.items.forEach(item => {
+    parts.push(formatSingleBookmark(item, 0));
+  });
+
   return parts.join('\n');
 }
