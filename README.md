@@ -11,10 +11,16 @@ This MCP has read and write access (if you allow it). Please. PLEASE backup your
 - Read and create notes in your vault
 - Edit existing notes (append, prepend, replace content while preserving frontmatter)
 - Move notes
-- Manage frontmatter (add aliases, manage tags)
+- Manage frontmatter (add/remove/list aliases, add/remove/rename tags)
+- Create directories and list directory contents
+- Delete notes
 - Update links automatically when notes are moved
 - List non-Markdown files (images, PDFs, etc.)
 - Search vault contents with basic operators (`path:`, `file:`)
+- Find backlinks to notes
+- List bookmarks from the core Bookmarks plugin
+- Get the path for today's daily note
+- List and toggle basic Markdown tasks in notes
 - Configurable vault access
 
 ## Requirements
@@ -111,13 +117,25 @@ The server exposes tools via the Model Context Protocol. The exact list can be r
 -   `create-note`: Create a new note.
 -   `edit-note`: Edit an existing note (supports `append`, `prepend`, `replace` operations).
 -   `move-note`: Move/rename a note, updating incoming links.
+-   `create-directory`: Create a new directory.
+-   `list-directory`: List files and directories in a vault path.
+-   `delete-note`: Delete a note.
 -   `add-alias`: Add an alias to a note's frontmatter.
+-   `remove-alias`: Remove an alias from a note's frontmatter.
+-   `list-aliases`: List all aliases for a note.
 -   `add-tags`: Add tags to a note's frontmatter.
+-   `remove-tags`: Remove tags from a note's frontmatter.
+-   `rename-tag`: Rename a tag across the entire vault.
 -   `list-files`: List non-Markdown files in the vault or a sub-directory.
 -   `search-vault`: Search notes (supports `path:`, `file:` operators).
+-   `get-backlinks`: Find notes linking to a target note.
+-   `list-bookmarks`: List items from the Bookmarks core plugin.
+-   `get-daily-note-path`: Calculate the expected path for today's daily note.
+-   `get-tasks-in-note`: List basic Markdown tasks (`- [ ]`/`- [x]`) in a note.
+-   `toggle-task`: Toggle the completion status of a task on a specific line.
 -   _(Potentially others like remove-tags, etc.)_
 
-**Tool Usage:** All tools that operate on files (`read-note`, `edit-note`, `create-note`, `move-note`, `add-alias`, `add-tags`, `list-files`, `search-vault` with `path:`) require a `vault` argument specifying the **name** of the target vault (which must be known to the client and correspond to a vault the server is implicitly configured for by the client environment). They also require a `path` argument relative to the vault root.
+**Tool Usage:** All tools that operate on files (`read-note`, `edit-note`, `create-note`, `move-note`, `add-alias`, `add-tags`, `list-files`, `search-vault` with `path:`, `list-directory`, `get-backlinks`, `get-tasks-in-note`, `toggle-task`) require a `vault` argument specifying the **name** of the target vault (which must be known to the client and correspond to a vault the server is implicitly configured for by the client environment). They also require a `path` argument relative to the vault root (where applicable, e.g., not for `list-bookmarks` or `get-daily-note-path` which only need the vault).
 
 Example `read-note` arguments:
 `{ "vault": "work", "path": "projects/alpha/meeting-notes.md" }`
