@@ -15,6 +15,7 @@ import { createAddAliasTool } from "./tools/add-alias/index.js";
 import { createRemoveAliasTool } from "./tools/remove-alias/index.js";
 import { createListAliasesTool } from "./tools/list-aliases/index.js";
 import { createListFilesTool } from "./tools/list-files/index.js";
+import { createListDirectoryTool } from "./tools/list-directory/index.js";
 import { listVaultsPrompt } from "./prompts/list-vaults/index.js";
 import { registerPrompt } from "./utils/prompt-factory.js";
 import path from "path";
@@ -368,6 +369,7 @@ async function main() {
   server.registerTool(createRemoveAliasTool(vaultsMap));
   server.registerTool(createListAliasesTool(vaultsMap));
   server.registerTool(createListFilesTool(vaultsMap));
+  server.registerTool(createListDirectoryTool(vaultsMap));
 
   // Conditionally register ListAvailableVaultsTool only if multiple vaults configured
   if (vaultConfigs.length > 1) {
