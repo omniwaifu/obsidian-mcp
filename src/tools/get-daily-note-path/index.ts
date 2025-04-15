@@ -29,6 +29,9 @@ const schema = z.object({
   vault: z.string()
     .min(1, "Vault name cannot be empty")
     .describe("Name of the vault to get the daily note path for"),
+  date: z.string()
+    .optional()
+    .describe("Optional date for which to get the daily note path (ISO 8601 or YYYY-MM-DD). Defaults to today."),
 }).strict();
 
 type GetDailyNotePathInput = z.infer<typeof schema>;
@@ -110,15 +113,33 @@ async function getDailyNotePath(
   }
   const folder = config.folder || ''; 
 
-  const today = new Date();
+  // Determine which date to use
+  let targetDate: Date;
+  if (args.date) {
+    let parsed: Date;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(args.date)) {
+      // YYYY-MM-DD: parse as local time
+      const [year, month, day] = args.date.split('-').map(Number);
+      parsed = new Date(year, month - 1, day);
+    } else {
+      // Fallback: let Date parse (for ISO with time)
+      parsed = new Date(args.date);
+    }
+    if (isNaN(parsed.getTime())) {
+      dailyNoteConfigCache.delete(vaultName);
+      throw new McpError(ErrorCode.InvalidParams, `Invalid date format: '${args.date}'. Use ISO 8601 or YYYY-MM-DD.`);
+    }
+    targetDate = parsed;
+  } else {
+    targetDate = new Date();
+  }
   let formattedDate: string;
   try {
-      formattedDate = formatSimpleDate(today, config.format);
+    formattedDate = formatSimpleDate(targetDate, config.format);
   } catch (formatError) {
-      // If formatting fails with cached config, invalidate cache
-      if (cachedEntry) { dailyNoteConfigCache.delete(vaultName); }
-      if (formatError instanceof McpError) throw formatError;
-      throw new McpError(ErrorCode.InvalidParams, `Failed to format date using format string "${config.format}": ${(formatError as Error).message}`);
+    if (cachedEntry) { dailyNoteConfigCache.delete(vaultName); }
+    if (formatError instanceof McpError) throw formatError;
+    throw new McpError(ErrorCode.InvalidParams, `Failed to format date using format string "${config.format}": ${(formatError as Error).message}`);
   }
 
   // Ensure folder path separators are handled correctly for joining
@@ -134,7 +155,7 @@ async function getDailyNotePath(
 export function createGetDailyNotePathTool(vaults: Map<string, string>) {
   return createTool<GetDailyNotePathInput>({
     name: "get-daily-note-path",
-    description: `Calculates the expected relative path for today's daily note based on the Daily Notes core plugin settings (.obsidian/daily-notes.json).\n\nExamples:\n- Get path for vault: { "vault": "my_vault" }`,
+    description: `Calculates the expected relative path for a daily note based on the Daily Notes core plugin settings (.obsidian/daily-notes.json).\n\nYou can specify a date (ISO 8601 or YYYY-MM-DD) to get the path for that day, or omit it to get today's path.\n\nExamples:\n- Get today's path: { "vault": "my_vault" }\n- Get path for a specific date: { "vault": "my_vault", "date": "2024-06-01" }`,
     schema,
     handler: async (args, vaultPath, vaultName) => {
       // --- DEBUG LOG ---
