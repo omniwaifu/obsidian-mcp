@@ -12,7 +12,6 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import {
   RateLimiter,
-  ConnectionMonitor,
   validateMessageSize,
 } from "./utils/security.js";
 import { Tool } from "./types.js";
@@ -45,7 +44,6 @@ export class ObsidianServer {
   private tools: Map<string, Tool<any>> = new Map();
   private vaults: Map<string, string> = new Map();
   private rateLimiter: RateLimiter;
-  private connectionMonitor: ConnectionMonitor;
   private vaultResolver: VaultResolver;
 
   constructor(vaultConfigs: { name: string; path: string }[]) {
@@ -103,20 +101,11 @@ export class ObsidianServer {
 
     // Initialize security features
     this.rateLimiter = new RateLimiter();
-    this.connectionMonitor = new ConnectionMonitor();
 
     // Register prompts
     registerPrompt(listVaultsPrompt);
 
     this.setupHandlers();
-
-    // Setup connection monitoring with grace period for initialization
-    this.connectionMonitor.start(() => {
-      this.server.close();
-    });
-
-    // Update activity during initialization
-    this.connectionMonitor.updateActivity();
 
     // Setup error handler
     this.server.onerror = (error) => {
@@ -134,9 +123,6 @@ export class ObsidianServer {
     try {
       // Validate message size
       validateMessageSize(request);
-
-      // Update connection activity
-      this.connectionMonitor.updateActivity();
 
       // Check rate limit using a global client ID
       if (!this.rateLimiter.checkLimit("global_client")) {
@@ -231,6 +217,7 @@ export class ObsidianServer {
     this.server.setRequestHandler(
       CallToolRequestSchema,
       async (request, extra) => {
+        console.error(`[ObsidianServer] Received CallToolRequest for tool: ${request?.params?.name ?? 'UNKNOWN'}`);
         this.validateRequest(request);
         const params = request.params;
         if (!params || typeof params !== "object") {
@@ -308,7 +295,6 @@ export class ObsidianServer {
   }
 
   async stop() {
-    this.connectionMonitor.stop();
     await this.server.close();
     console.error("Obsidian MCP Server stopped");
   }
