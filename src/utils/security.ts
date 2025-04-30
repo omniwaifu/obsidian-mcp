@@ -6,7 +6,8 @@ export class RateLimiter {
   private maxRequests: number;
   private timeWindow: number;
 
-  constructor(maxRequests: number = 1000, timeWindow: number = 60000) { // 1000 requests per minute for local usage
+  constructor(maxRequests: number = 1000, timeWindow: number = 60000) {
+    // 1000 requests per minute for local usage
     this.maxRequests = maxRequests;
     this.timeWindow = timeWindow;
   }
@@ -14,10 +15,12 @@ export class RateLimiter {
   checkLimit(clientId: string): boolean {
     const now = Date.now();
     const timestamps = this.requests.get(clientId) || [];
-    
+
     // Remove old timestamps
-    const validTimestamps = timestamps.filter(time => now - time < this.timeWindow);
-    
+    const validTimestamps = timestamps.filter(
+      (time) => now - time < this.timeWindow,
+    );
+
     if (validTimestamps.length >= this.maxRequests) {
       return false;
     }
@@ -36,7 +39,7 @@ export function validateMessageSize(message: any): void {
   if (size > MAX_MESSAGE_SIZE) {
     throw new McpError(
       ErrorCode.InvalidRequest,
-      `Message size exceeds limit of ${MAX_MESSAGE_SIZE} bytes`
+      `Message size exceeds limit of ${MAX_MESSAGE_SIZE} bytes`,
     );
   }
 }
@@ -49,7 +52,8 @@ export class ConnectionMonitor {
   private readonly gracePeriod: number;
   private initialized: boolean = false;
 
-  constructor(timeout: number = 60000, gracePeriod: number = 30000) { // 60s timeout, 30s grace period
+  constructor(timeout: number = 60000, gracePeriod: number = 30000) {
+    // 60s timeout, 30s grace period
     this.timeout = timeout;
     this.gracePeriod = gracePeriod;
   }

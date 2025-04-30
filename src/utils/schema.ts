@@ -17,10 +17,10 @@ export function createSchemaHandler<T>(schema: z.ZodSchema<T>) {
       return {
         type: fullSchema.type || "object",
         properties: fullSchema.properties || {},
-        required: fullSchema.required || []
+        required: fullSchema.required || [],
       };
     })(),
-    
+
     // Validate and parse input
     parse: (input: unknown): T => {
       try {
@@ -29,11 +29,11 @@ export function createSchemaHandler<T>(schema: z.ZodSchema<T>) {
         if (error instanceof z.ZodError) {
           throw new McpError(
             ErrorCode.InvalidParams,
-            `Invalid arguments: ${error.errors.map(e => e.message).join(", ")}`
+            `Invalid arguments: ${error.errors.map((e) => e.message).join(", ")}`,
           );
         }
         throw error;
       }
-    }
+    },
   };
 }

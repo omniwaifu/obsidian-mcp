@@ -20,12 +20,13 @@ Do not try to directly access vault paths - use the provided tools instead.`;
 
 export const listVaultsPrompt: Prompt = {
   name: "list-vaults",
-  description: "Show available Obsidian vaults. Use this prompt to discover which vaults you can work with.",
+  description:
+    "Show available Obsidian vaults. Use this prompt to discover which vaults you can work with.",
   arguments: [],
   handler: async (_, vaults: Map<string, string>): Promise<PromptResult> => {
     const vaultList = Array.from(vaults.entries())
       .map(([name, path]) => `- ${name}`)
-      .join('\n');
+      .join("\n");
 
     return {
       messages: [
@@ -33,17 +34,17 @@ export const listVaultsPrompt: Prompt = {
           role: "user",
           content: {
             type: "text",
-            text: `The following Obsidian vaults are available:\n${vaultList}\n\nYou can use these vault names when working with tools. For example, to create a note in the first vault, use that vault's name in the create-note tool's arguments.`
-          }
+            text: `The following Obsidian vaults are available:\n${vaultList}\n\nYou can use these vault names when working with tools. For example, to create a note in the first vault, use that vault's name in the create-note tool's arguments.`,
+          },
         },
         {
           role: "assistant",
           content: {
             type: "text",
-            text: `I see the available vaults. I'll use these vault names when working with tools that require a vault parameter. For searching within vault contents, I'll use the search-vault tool with the appropriate vault name.`
-          }
-        }
-      ]
+            text: `I see the available vaults. I'll use these vault names when working with tools that require a vault parameter. For searching within vault contents, I'll use the search-vault tool with the appropriate vault name.`,
+          },
+        },
+      ],
     };
-  }
+  },
 };

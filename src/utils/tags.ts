@@ -1,4 +1,4 @@
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 
 interface ParsedNote {
@@ -9,7 +9,7 @@ interface ParsedNote {
 
 interface TagChange {
   tag: string;
-  location: 'frontmatter' | 'content';
+  location: "frontmatter" | "content";
   line?: number;
   context?: string;
 }
@@ -24,7 +24,7 @@ interface TagRemovalReport {
  * Checks if tagA is a parent of tagB in a hierarchical structure
  */
 export function isParentTag(parentTag: string, childTag: string): boolean {
-  return childTag.startsWith(parentTag + '/');
+  return childTag.startsWith(parentTag + "/");
 }
 
 /**
@@ -33,42 +33,43 @@ export function isParentTag(parentTag: string, childTag: string): boolean {
  */
 export function matchesTagPattern(pattern: string, tag: string): boolean {
   // Convert glob pattern to regex
-  const regexPattern = pattern
-    .replace(/\*/g, '.*')
-    .replace(/\//g, '\\/');
+  const regexPattern = pattern.replace(/\*/g, ".*").replace(/\//g, "\\/");
   return new RegExp(`^${regexPattern}$`).test(tag);
 }
 
 /**
  * Gets all related tags (parent/child) for a given tag
  */
-export function getRelatedTags(tag: string, allTags: string[]): {
+export function getRelatedTags(
+  tag: string,
+  allTags: string[],
+): {
   parents: string[];
   children: string[];
 } {
   const parents: string[] = [];
   const children: string[] = [];
-  
-  const parts = tag.split('/');
-  let current = '';
-  
+
+  const parts = tag.split("/");
+  let current = "";
+
   // Find parents
   for (let i = 0; i < parts.length - 1; i++) {
     current = current ? `${current}/${parts[i]}` : parts[i];
     parents.push(current);
   }
-  
+
   // Find *direct* children
-  allTags.forEach(otherTag => {
+  allTags.forEach((otherTag) => {
     if (isParentTag(tag, otherTag)) {
       // Check if it's a direct child (no further '/' after the parent part)
       const childPart = otherTag.substring(tag.length + 1); // +1 for the '/'
-      if (!childPart.includes('/')) {
+      if (!childPart.includes("/")) {
         children.push(otherTag);
       }
     }
   });
-  
+
   return { parents, children };
 }
 
@@ -79,11 +80,11 @@ export function getRelatedTags(tag: string, allTags: string[]): {
  */
 export function validateTag(tag: string): boolean {
   // Remove leading # if present
-  tag = tag.replace(/^#/, '');
-  
+  tag = tag.replace(/^#/, "");
+
   // Check if tag is empty
   if (!tag) return false;
-  
+
   // Basic tag format validation
   const TAG_REGEX = /^[a-zA-Z0-9]+(\/[a-zA-Z0-9]+)*$/;
   return TAG_REGEX.test(tag);
@@ -95,19 +96,15 @@ export function validateTag(tag: string): boolean {
  */
 export function normalizeTag(tag: string, normalize = true): string {
   // Remove leading # if present
-  tag = tag.replace(/^#/, '');
-  
+  tag = tag.replace(/^#/, "");
+
   if (!normalize) return tag;
-  
+
   // Convert camelCase/PascalCase to kebab-case
   return tag
-    .split('/')
-    .map(part => 
-      part
-        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-        .toLowerCase()
-    )
-    .join('/');
+    .split("/")
+    .map((part) => part.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase())
+    .join("/");
 }
 
 /**
@@ -123,8 +120,8 @@ export function parseNote(content: string): ParsedNote {
   if (emptyMatch) {
     return {
       frontmatter: {},
-      content: emptyMatch[1] || '', // Ensure content is string even if empty
-      hasFrontmatter: true
+      content: emptyMatch[1] || "", // Ensure content is string even if empty
+      hasFrontmatter: true,
     };
   }
 
@@ -134,7 +131,7 @@ export function parseNote(content: string): ParsedNote {
     return {
       frontmatter: {},
       content: content,
-      hasFrontmatter: false
+      hasFrontmatter: false,
     };
   }
 
@@ -143,12 +140,12 @@ export function parseNote(content: string): ParsedNote {
     return {
       frontmatter: frontmatter || {},
       content: match[2],
-      hasFrontmatter: true
+      hasFrontmatter: true,
     };
   } catch (error) {
     throw new McpError(
       ErrorCode.InvalidParams,
-      'Invalid frontmatter YAML format'
+      "Invalid frontmatter YAML format",
     );
   }
 }
@@ -170,66 +167,68 @@ export function stringifyNote(parsed: ParsedNote): string {
  */
 export function extractTags(content: string): string[] {
   const tags = new Set<string>();
-  
+
   // Regex refined: Match # followed by allowed chars, ensure it's followed by a non-tag character or end of line
   // Allowed: letters, numbers, /, _, -
   // (Removed '.' from allowed chars as it's often punctuation)
   const TAG_PATTERN = /(?<![\w`])#([a-zA-Z0-9/_-]+)(?![a-zA-Z0-9/_-])/g;
-  
-  const lines = content.split('\n');
+
+  const lines = content.split("\n");
   let inCodeBlock = false;
   let inHtmlComment = false;
-  
+
   for (const line of lines) {
     let currentLine = line;
     let processLine = true;
 
     // Check for HTML comment boundaries across lines
     if (inHtmlComment) {
-        if (currentLine.includes('-->')) {
-            inHtmlComment = false;
-            currentLine = currentLine.substring(currentLine.indexOf('-->') + 3);
-        } else {
-            processLine = false; // Still inside comment block
-        }
+      if (currentLine.includes("-->")) {
+        inHtmlComment = false;
+        currentLine = currentLine.substring(currentLine.indexOf("-->") + 3);
+      } else {
+        processLine = false; // Still inside comment block
+      }
     }
     // Check for code block boundaries
     // Needs to be checked *after* potential HTML comment end on the same line
-    if (processLine && currentLine.trim().startsWith('```')) {
+    if (processLine && currentLine.trim().startsWith("```")) {
       inCodeBlock = !inCodeBlock;
       processLine = false; // Don't process the fence line itself
     }
 
     if (processLine && !inCodeBlock) {
-        // Find tags on the line, considering potential start of HTML comment
-        let searchLine = currentLine;
-        if (currentLine.includes('<!--')) {
-            searchLine = currentLine.substring(0, currentLine.indexOf('<!--'));
-            // If comment doesn't close on same line, set flag for next iteration
-            if (!currentLine.substring(currentLine.indexOf('<!--')).includes('-->')) {
-                 inHtmlComment = true;
-            }
+      // Find tags on the line, considering potential start of HTML comment
+      let searchLine = currentLine;
+      if (currentLine.includes("<!--")) {
+        searchLine = currentLine.substring(0, currentLine.indexOf("<!--"));
+        // If comment doesn't close on same line, set flag for next iteration
+        if (
+          !currentLine.substring(currentLine.indexOf("<!--")).includes("-->")
+        ) {
+          inHtmlComment = true;
         }
+      }
 
-        const matches = searchLine.match(TAG_PATTERN);
-        if (matches) {
-            matches.forEach(tagMatch => {
-                // Use the refined regex to capture the tag part correctly (Group 1)
-                const tag = tagMatch.match(/#([a-zA-Z0-9/_-]+)/)?.[1];
-                if (!tag) return;
+      const matches = searchLine.match(TAG_PATTERN);
+      if (matches) {
+        matches.forEach((tagMatch) => {
+          // Use the refined regex to capture the tag part correctly (Group 1)
+          const tag = tagMatch.match(/#([a-zA-Z0-9/_-]+)/)?.[1];
+          if (!tag) return;
 
-                // Ensure tag doesn't immediately follow a backtick (inline code)
-                const index = searchLine.indexOf(tagMatch);
-                if (index > 0 && searchLine[index - 1] === '`') {
-                    // Skip inline code tag
-                } else {
-                    tags.add(tag); // Add captured group 1 (without #)
-                }
-            });
-        }
+          // Ensure tag doesn't immediately follow a backtick (inline code)
+          const index = searchLine.indexOf(tagMatch);
+          if (index > 0 && searchLine[index - 1] === "`") {
+            // Skip inline code tag
+          } else {
+            tags.add(tag); // Add captured group 1 (without #)
+          }
+        });
+      }
     }
   }
-  
+
   return Array.from(tags);
 }
 
@@ -239,38 +238,36 @@ export function extractTags(content: string): string[] {
 export function addTagsToFrontmatter(
   frontmatter: Record<string, any>, // Modifies this object directly
   newTags: string[],
-  normalize = true
-): void { // Returns void as it modifies in-place
+  normalize = true,
+): void {
+  // Returns void as it modifies in-place
   // Handle existing tags (string or array)
   let existingTagsArray: string[] = [];
-  if (typeof frontmatter.tags === 'string') {
+  if (typeof frontmatter.tags === "string") {
     existingTagsArray = [frontmatter.tags];
   } else if (Array.isArray(frontmatter.tags)) {
     existingTagsArray = frontmatter.tags;
   }
   const existingTags = new Set(existingTagsArray);
-  
+
   for (const tag of newTags) {
     if (!validateTag(tag)) {
       // Keep original behavior: throw for invalid tags during add
-      throw new McpError(
-        ErrorCode.InvalidParams,
-        `Invalid tag format: ${tag}`
-      );
+      throw new McpError(ErrorCode.InvalidParams, `Invalid tag format: ${tag}`);
     }
     existingTags.add(normalizeTag(tag, normalize));
   }
-  
+
   // Update the frontmatter object directly
   if (existingTags.size > 0) {
-     // Obsidian convention: single tag as string, multiple as array
-     if (existingTags.size === 1) {
-         frontmatter.tags = Array.from(existingTags)[0];
-     } else {
-         frontmatter.tags = Array.from(existingTags).sort();
-     }
+    // Obsidian convention: single tag as string, multiple as array
+    if (existingTags.size === 1) {
+      frontmatter.tags = Array.from(existingTags)[0];
+    } else {
+      frontmatter.tags = Array.from(existingTags).sort();
+    }
   } else {
-      delete frontmatter.tags; // Remove if empty
+    delete frontmatter.tags; // Remove if empty
   }
 }
 
@@ -284,7 +281,7 @@ export function removeTagsFromFrontmatter(
     normalize?: boolean;
     // preserveChildren?: boolean; // TODO: Implement preserveChildren if needed
     patterns?: string[];
-  } = {}
+  } = {},
 ): {
   // frontmatter: Record<string, any>; // No longer returns frontmatter
   report: {
@@ -295,12 +292,12 @@ export function removeTagsFromFrontmatter(
   const {
     normalize = true,
     // preserveChildren = false, // TODO
-    patterns = []
+    patterns = [],
   } = options;
 
   // Handle existing tags (string or array)
   let currentTags: string[] = [];
-  if (typeof frontmatter.tags === 'string') {
+  if (typeof frontmatter.tags === "string") {
     currentTags = [frontmatter.tags];
   } else if (Array.isArray(frontmatter.tags)) {
     currentTags = frontmatter.tags;
@@ -308,20 +305,26 @@ export function removeTagsFromFrontmatter(
 
   const removed: TagChange[] = [];
   const preserved: TagChange[] = [];
-  const tagsToRemoveNormalized = new Set(tagsToRemove.map(t => normalizeTag(t, normalize)));
-  const patternsRegex = patterns.map(p => new RegExp(`^${p.replace(/\*/g, '.*').replace(/\//g, '\\/')}$`));
+  const tagsToRemoveNormalized = new Set(
+    tagsToRemove.map((t) => normalizeTag(t, normalize)),
+  );
+  const patternsRegex = patterns.map(
+    (p) => new RegExp(`^${p.replace(/\*/g, ".*").replace(/\//g, "\\/")}$`),
+  );
 
-  const remainingTags = currentTags.filter(tag => {
+  const remainingTags = currentTags.filter((tag) => {
     const normalizedTag = normalizeTag(tag, normalize);
-    const shouldRemove = tagsToRemoveNormalized.has(normalizedTag) || patternsRegex.some(re => re.test(normalizedTag));
-    
+    const shouldRemove =
+      tagsToRemoveNormalized.has(normalizedTag) ||
+      patternsRegex.some((re) => re.test(normalizedTag));
+
     if (shouldRemove) {
-       // TODO: Add preserveChildren logic here if re-enabled
-       removed.push({ tag: tag, location: 'frontmatter' });
-       return false; // Filter out
+      // TODO: Add preserveChildren logic here if re-enabled
+      removed.push({ tag: tag, location: "frontmatter" });
+      return false; // Filter out
     } else {
-       preserved.push({ tag: tag, location: 'frontmatter' });
-       return true; // Keep
+      preserved.push({ tag: tag, location: "frontmatter" });
+      return true; // Keep
     }
   });
 
@@ -331,7 +334,7 @@ export function removeTagsFromFrontmatter(
   } else {
     // Always store as array internally, even if just one tag remains
     // Obsidian handles rendering single-element array as string if needed
-    frontmatter.tags = remainingTags.sort(); 
+    frontmatter.tags = remainingTags.sort();
   }
 
   return { report: { removed, preserved } };
@@ -347,7 +350,7 @@ export function removeInlineTags(
     normalize?: boolean;
     preserveChildren?: boolean;
     patterns?: string[];
-  } = {}
+  } = {},
 ): {
   content: string;
   report: {
@@ -355,90 +358,85 @@ export function removeInlineTags(
     preserved: TagChange[];
   };
 } {
-  const {
-    normalize = true,
-    preserveChildren = false,
-    patterns = []
-  } = options;
+  const { normalize = true, preserveChildren = false, patterns = [] } = options;
 
   const removed: TagChange[] = [];
   const preserved: TagChange[] = [];
-  
+
   // Process content line by line to track context
-  const lines = content.split('\n');
+  const lines = content.split("\n");
   let inCodeBlock = false;
   let inHtmlComment = false;
   let modifiedLines = lines.map((line, lineNum) => {
     // Track code blocks and comments
-    if (line.trim().startsWith('```')) {
+    if (line.trim().startsWith("```")) {
       inCodeBlock = !inCodeBlock;
       return line;
     }
-    if (line.includes('<!--')) inHtmlComment = true;
-    if (line.includes('-->')) inHtmlComment = false;
+    if (line.includes("<!--")) inHtmlComment = true;
+    if (line.includes("-->")) inHtmlComment = false;
     if (inCodeBlock || inHtmlComment) {
       // Preserve tags in code blocks and comments
       const tags = line.match(/(?<!`)#[a-zA-Z0-9][a-zA-Z0-9/]*(?!`)/g) || [];
-      tags.forEach(tag => {
+      tags.forEach((tag) => {
         preserved.push({
           tag: tag.slice(1),
-          location: 'content',
+          location: "content",
           line: lineNum + 1,
-          context: line.trim()
+          context: line.trim(),
         });
       });
       return line;
     }
 
     // Process tags in regular content
-    return line.replace(
-      /(?<!`)#[a-zA-Z0-9][a-zA-Z0-9/]*(?!`)/g,
-      (match) => {
-        const tag = match.slice(1); // Remove # prefix
-        const normalizedTag = normalizeTag(tag, normalize);
-        
-        const shouldRemove = tagsToRemove.some(removeTag => {
-          // Direct match
-          if (normalizeTag(removeTag, normalize) === normalizedTag) return true;
-          
-          // Pattern match
-          if (patterns.some(pattern => matchesTagPattern(pattern, normalizedTag))) {
-            return true;
-          }
-          
-          // Hierarchical match (if not preserving children)
-          if (!preserveChildren && isParentTag(removeTag, normalizedTag)) {
-            return true;
-          }
-          
-          return false;
-        });
+    return line.replace(/(?<!`)#[a-zA-Z0-9][a-zA-Z0-9/]*(?!`)/g, (match) => {
+      const tag = match.slice(1); // Remove # prefix
+      const normalizedTag = normalizeTag(tag, normalize);
 
-        if (shouldRemove) {
-          removed.push({
-            tag: normalizedTag,
-            location: 'content',
-            line: lineNum + 1,
-            context: line.trim()
-          });
-          return '';
-        } else {
-          preserved.push({
-            tag: normalizedTag,
-            location: 'content',
-            line: lineNum + 1,
-            context: line.trim()
-          });
-          return match;
+      const shouldRemove = tagsToRemove.some((removeTag) => {
+        // Direct match
+        if (normalizeTag(removeTag, normalize) === normalizedTag) return true;
+
+        // Pattern match
+        if (
+          patterns.some((pattern) => matchesTagPattern(pattern, normalizedTag))
+        ) {
+          return true;
         }
+
+        // Hierarchical match (if not preserving children)
+        if (!preserveChildren && isParentTag(removeTag, normalizedTag)) {
+          return true;
+        }
+
+        return false;
+      });
+
+      if (shouldRemove) {
+        removed.push({
+          tag: normalizedTag,
+          location: "content",
+          line: lineNum + 1,
+          context: line.trim(),
+        });
+        return "";
+      } else {
+        preserved.push({
+          tag: normalizedTag,
+          location: "content",
+          line: lineNum + 1,
+          context: line.trim(),
+        });
+        return match;
       }
-    );
+    });
   });
 
   // Clean up empty lines created by tag removal
   modifiedLines = modifiedLines.reduce((acc: string[], line: string) => {
-    if (line.trim() === '') {
-      if (acc[acc.length - 1]?.trim() === '') {
+    if (line.trim() === "") {
+      if (acc[acc.length - 1]?.trim() === "") {
         return acc;
       }
     }
@@ -447,7 +445,7 @@ export function removeInlineTags(
   }, []);
 
   return {
-    content: modifiedLines.join('\n'),
-    report: { removed, preserved }
+    content: modifiedLines.join("\n"),
+    report: { removed, preserved },
   };
 }

@@ -1,19 +1,19 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { unified, Processor } from 'unified';
-import remarkParse from 'remark-parse';
-import remarkStringify from 'remark-stringify';
-import remarkGfm from 'remark-gfm';
-import remarkFrontmatter from 'remark-frontmatter';
-import { visit } from 'unist-util-visit';
+import { unified, Processor } from "unified";
+import remarkParse from "remark-parse";
+import remarkStringify from "remark-stringify";
+import remarkGfm from "remark-gfm";
+import remarkFrontmatter from "remark-frontmatter";
+import { visit } from "unist-util-visit";
 import { getAllMarkdownFiles } from "./files.js";
-import type { Node, Parent } from 'unist';
-import type { Link, Delete, Text, Root } from 'mdast';
+import type { Node, Parent } from "unist";
+import type { Link, Delete, Text, Root } from "mdast";
 import { VFileCompatible } from "vfile";
 
 // Define WikiLink node type for AST traversal
 interface WikiLinkNode extends Node {
-  type: 'wikiLink';
+  type: "wikiLink";
   value: string;
   data?: {
     alias?: string;
@@ -23,7 +23,7 @@ interface WikiLinkNode extends Node {
 
 interface LinkUpdateOptions {
   filePath: string;
-  oldPath: string; 
+  oldPath: string;
   newPath?: string;
 }
 
@@ -45,36 +45,39 @@ export async function updateLinksInFile({
   }
 
   const oldName = path.basename(oldPath, ".md");
-  const oldLinkTarget = oldPath.endsWith('.md') ? oldPath : oldPath + '.md';
+  const oldLinkTarget = oldPath.endsWith(".md") ? oldPath : oldPath + ".md";
   const oldWikiLinkTarget = oldName;
 
   const newName = newPath ? path.basename(newPath, ".md") : null;
-  const newLinkTarget = newPath && (newPath.endsWith('.md') ? newPath : newPath + '.md');
+  const newLinkTarget =
+    newPath && (newPath.endsWith(".md") ? newPath : newPath + ".md");
   const newWikiLinkTarget = newName;
 
   let modified = false;
   let processor: any; // Use any type to avoid complex signature issues for now
 
   try {
-    const wikiLinkPlugin = await import('remark-wiki-link').then(m => m.default || m);
+    const wikiLinkPlugin = await import("remark-wiki-link").then(
+      (m) => m.default || m,
+    );
     processor = unified()
       .use(remarkParse)
-      .use(remarkFrontmatter, ['yaml'])
+      .use(remarkFrontmatter, ["yaml"])
       .use(remarkGfm)
       .use(wikiLinkPlugin)
       .use(remarkStringify, {
-        bullet: '-',
-        listItemIndent: 'one',
+        bullet: "-",
+        listItemIndent: "one",
       });
   } catch (err) {
-      console.error("Failed to initialize remark processor:", err);
-      return false;
+    console.error("Failed to initialize remark processor:", err);
+    return false;
   }
 
   // Check processor exists before using it
   if (!processor) {
-     console.error("Processor is undefined after initialization attempt.");
-     return false;
+    console.error("Processor is undefined after initialization attempt.");
+    return false;
   }
 
   const tree = processor.parse(content);
@@ -84,14 +87,14 @@ export async function updateLinksInFile({
 
     let nodeModified = false;
 
-    if (node.type === 'link') {
+    if (node.type === "link") {
       const linkNode = node as Link;
       if (linkNode.url === oldLinkTarget) {
         if (newLinkTarget) {
           linkNode.url = newLinkTarget;
           nodeModified = true;
         } else {
-          const deleteNode: Delete = { type: 'delete', children: [linkNode] };
+          const deleteNode: Delete = { type: "delete", children: [linkNode] };
           parent.children.splice(index, 1, deleteNode);
           modified = true;
           return; // Skip further processing of replaced node
@@ -99,20 +102,23 @@ export async function updateLinksInFile({
       }
     }
 
-    if (node.type === 'wikiLink') {
+    if (node.type === "wikiLink") {
       const wikiLinkNode = node as WikiLinkNode;
       if (wikiLinkNode.value === oldWikiLinkTarget) {
-         if (newWikiLinkTarget) {
+        if (newWikiLinkTarget) {
           wikiLinkNode.value = newWikiLinkTarget;
-          if (wikiLinkNode.data) wikiLinkNode.data.permalink = newWikiLinkTarget;
+          if (wikiLinkNode.data)
+            wikiLinkNode.data.permalink = newWikiLinkTarget;
           nodeModified = true;
         } else {
           // Reconstruct original text for strikethrough
-          const originalText = wikiLinkNode.data?.alias && wikiLinkNode.data.alias !== wikiLinkNode.value
-             ? `[[${wikiLinkNode.value}|${wikiLinkNode.data.alias}]]`
-             : `[[${wikiLinkNode.value}]]`;
-          const textNode: Text = { type: 'text', value: originalText };
-          const deleteNode: Delete = { type: 'delete', children: [textNode] };
+          const originalText =
+            wikiLinkNode.data?.alias &&
+            wikiLinkNode.data.alias !== wikiLinkNode.value
+              ? `[[${wikiLinkNode.value}|${wikiLinkNode.data.alias}]]`
+              : `[[${wikiLinkNode.value}]]`;
+          const textNode: Text = { type: "text", value: originalText };
+          const deleteNode: Delete = { type: "delete", children: [textNode] };
           parent.children.splice(index, 1, deleteNode);
           modified = true;
           return; // Skip further processing of replaced node
@@ -136,12 +142,12 @@ export async function updateLinksInFile({
       const newContent = result.toString();
 
       if (newContent.trim() !== content.trim()) {
-         await fs.writeFile(filePath, newContent, "utf-8");
-         return true;
+        await fs.writeFile(filePath, newContent, "utf-8");
+        return true;
       }
-    } catch(e) {
-       console.error(`Error writing file ${filePath} after link update:`, e);
-       return false;
+    } catch (e) {
+      console.error(`Error writing file ${filePath} after link update:`, e);
+      return false;
     }
   }
 
@@ -169,14 +175,16 @@ export async function updateVaultLinks(
     if (file === path.join(vaultPath, oldPath)) continue;
 
     try {
-      if (await updateLinksInFile({
-        filePath: file,
-        oldPath: oldPath,
-        newPath: newPath || undefined
-      })) {
+      if (
+        await updateLinksInFile({
+          filePath: file,
+          oldPath: oldPath,
+          newPath: newPath || undefined,
+        })
+      ) {
         updatedFiles++;
       }
-    } catch(error) {
+    } catch (error) {
       console.error(`Failed to update links in file ${file}:`, error);
     }
   }

@@ -14,7 +14,7 @@ export interface BaseToolConfig<T> {
     sourceVaultName: string,
     destinationPath?: string,
     destinationVaultName?: string,
-    isCrossVault?: boolean
+    isCrossVault?: boolean,
   ) => Promise<any>;
 }
 
@@ -23,10 +23,12 @@ export interface BaseToolConfig<T> {
  */
 export function createTool<T extends { vault: string }>(
   config: BaseToolConfig<T>,
-  vaults: Map<string, string>
+  vaults: Map<string, string>,
 ): Tool {
   const vaultResolver = new VaultResolver(vaults);
-  const schemaHandler = config.schema ? createSchemaHandler(config.schema) : undefined;
+  const schemaHandler = config.schema
+    ? createSchemaHandler(config.schema)
+    : undefined;
 
   return {
     name: config.name,
@@ -34,19 +36,23 @@ export function createTool<T extends { vault: string }>(
     inputSchema: schemaHandler || createSchemaHandler(z.object({})),
     handler: async (args) => {
       try {
-        const validated = schemaHandler ? schemaHandler.parse(args) as T : {} as T;
-        const { vaultPath, vaultName } = vaultResolver.resolveVault(validated.vault);
+        const validated = schemaHandler
+          ? (schemaHandler.parse(args) as T)
+          : ({} as T);
+        const { vaultPath, vaultName } = vaultResolver.resolveVault(
+          validated.vault,
+        );
         return await config.handler(validated, vaultPath, vaultName);
       } catch (error) {
         if (error instanceof z.ZodError) {
           throw new McpError(
             ErrorCode.InvalidRequest,
-            `Invalid arguments: ${error.errors.map(e => e.message).join(", ")}`
+            `Invalid arguments: ${error.errors.map((e) => e.message).join(", ")}`,
           );
         }
         throw error;
       }
-    }
+    },
   };
 }
 
@@ -55,7 +61,7 @@ export function createTool<T extends { vault: string }>(
  */
 export function createToolNoArgs(
   config: Omit<BaseToolConfig<{}>, "schema">,
-  vaults: Map<string, string>
+  vaults: Map<string, string>,
 ): Tool {
   const vaultResolver = new VaultResolver(vaults);
 
@@ -69,7 +75,7 @@ export function createToolNoArgs(
       } catch (error) {
         throw error;
       }
-    }
+    },
   };
 }
 

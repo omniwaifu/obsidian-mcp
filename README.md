@@ -19,7 +19,7 @@ This MCP has read and write access (if you allow it). Please. PLEASE backup your
 - Search vault contents with basic operators (`path:`, `file:`)
 - List bookmarks from the core Bookmarks plugin
 - Get the path for today's daily note
-    - Path is cached, so if you change your path to daily notes, you might need to wait a bit for the cache to update.
+  - Path is cached, so if you change your path to daily notes, you might need to wait a bit for the cache to update.
 - List and toggle basic Markdown tasks in notes
 - Configurable vault access
 
@@ -71,31 +71,33 @@ Configure your MCP client (e.g., Claude Desktop) to run the server using `node` 
 
 ```json
 {
-    "mcpServers": {
-        "obsidian": {
-            "command": "node",
-            "args": [
-                "/path/to/your/fork/obsidian-mcp/build/main.js",
-                "--vault", "personal:/path/to/your/personal/vault" 
-            ]
-        }
+  "mcpServers": {
+    "obsidian": {
+      "command": "node",
+      "args": [
+        "/path/to/your/fork/obsidian-mcp/build/main.js",
+        "--vault",
+        "personal:/path/to/your/personal/vault"
+      ]
     }
+  }
 }
 ```
 
 **Explanation:**
 
--   `command`: Should be `node`.
--   `args`: 
-    -   The first argument MUST be the **absolute path** to the `build/main.js` file in your cloned project.
-    -   Subsequent arguments configure the vaults.
-    -   Use `--vault` followed by `name:/path/to/vault` for *each* vault you want the server to access.
-        -   `name`: A short, alphanumeric name (underscores/hyphens allowed) you will use in tool calls (e.g., `minerva`).
-        -   `path`: The **absolute path** to the vault directory.
+- `command`: Should be `node`.
+- `args`:
+  - The first argument MUST be the **absolute path** to the `build/main.js` file in your cloned project.
+  - Subsequent arguments configure the vaults.
+  - Use `--vault` followed by `name:/path/to/vault` for _each_ vault you want the server to access.
+    - `name`: A short, alphanumeric name (underscores/hyphens allowed) you will use in tool calls (e.g., `minerva`).
+    - `path`: The **absolute path** to the vault directory.
 
 Restart the client after saving the configuration.
 
 If you have connection issues, check the client's logs:
+
 - MacOS: `~/Library/Logs/Claude/mcp*.log`
 - Windows: `%APPDATA%\\Claude\\logs\\mcp*.log`
 
@@ -122,26 +124,26 @@ To run the server locally during development, use `node build/main.js` or `bun b
 
 The server exposes tools via the Model Context Protocol. The exact list can be retrieved using an MCP client, but key tools include:
 
--   `read-note`: Read the contents of a note.
--   `create-note`: Create a new note.
--   `edit-note`: Edit an existing note (supports `append`, `prepend`, `replace` operations).
--   `move-note`: Move/rename a note, updating incoming links.
--   `create-directory`: Create a new directory.
--   `list-directory`: List files and directories in a vault path.
--   `delete-note`: Delete a note.
--   `add-alias`: Add an alias to a note's frontmatter.
--   `remove-alias`: Remove an alias from a note's frontmatter.
--   `list-aliases`: List all aliases for a note.
--   `add-tags`: Add tags to a note's frontmatter.
--   `remove-tags`: Remove tags from a note's frontmatter.
--   `rename-tag`: Rename a tag across the entire vault.
--   `list-files`: List non-Markdown files in the vault or a sub-directory.
--   `search-vault`: Search notes (supports `path:`, `file:` operators).
--   `list-bookmarks`: List items from the Bookmarks core plugin.
--   `get-daily-note-path`: Calculate the expected path for today's daily note.
--   `get-tasks-in-note`: List basic Markdown tasks (`- [ ]`/`- [x]`) in a note.
--   `toggle-task`: Toggle the completion status of a task on a specific line.
--   _(Potentially others like remove-tags, etc.)_
+- `read-note`: Read the contents of a note.
+- `create-note`: Create a new note.
+- `edit-note`: Edit an existing note (supports `append`, `prepend`, `replace` operations).
+- `move-note`: Move/rename a note, updating incoming links.
+- `create-directory`: Create a new directory.
+- `list-directory`: List files and directories in a vault path.
+- `delete-note`: Delete a note.
+- `add-alias`: Add an alias to a note's frontmatter.
+- `remove-alias`: Remove an alias from a note's frontmatter.
+- `list-aliases`: List all aliases for a note.
+- `add-tags`: Add tags to a note's frontmatter.
+- `remove-tags`: Remove tags from a note's frontmatter.
+- `rename-tag`: Rename a tag across the entire vault.
+- `list-files`: List non-Markdown files in the vault or a sub-directory.
+- `search-vault`: Search notes (supports `path:`, `file:` operators).
+- `list-bookmarks`: List items from the Bookmarks core plugin.
+- `get-daily-note-path`: Calculate the expected path for today's daily note.
+- `get-tasks-in-note`: List basic Markdown tasks (`- [ ]`/`- [x]`) in a note.
+- `toggle-task`: Toggle the completion status of a task on a specific line.
+- _(Potentially others like remove-tags, etc.)_
 
 **Tool Usage:** All tools that operate on files (`read-note`, `edit-note`, `create-note`, `move-note`, `add-alias`, `add-tags`, `list-files`, `search-vault` with `path:`, `list-directory`, `get-tasks-in-note`, `toggle-task`, etc.) require a `vault` argument specifying the **name** of the target vault (e.g., `"minerva"`, `"personal"` from the configuration example above). They also require a `path` argument relative to the vault root (where applicable).
 
@@ -152,15 +154,17 @@ Example `read-note` arguments:
 
 Unit tests and End-to-End (E2E) tests are implemented using `bun:test`.
 
--   **Unit Tests:** Located within `src/` alongside the code they test (e.g., `src/utils/path.test.ts`).
--   **E2E Tests:** Located in the `e2e/` directory (e.g., `e2e/crud.test.ts`). These tests create a temporary vault, instantiate the server, register tools, and simulate MCP client calls to verify tool interactions with the filesystem.
+- **Unit Tests:** Located within `src/` alongside the code they test (e.g., `src/utils/path.test.ts`).
+- **E2E Tests:** Located in the `e2e/` directory (e.g., `e2e/crud.test.ts`). These tests create a temporary vault, instantiate the server, register tools, and simulate MCP client calls to verify tool interactions with the filesystem.
 
 Run all tests:
+
 ```bash
 bun test
 ```
 
 Run only E2E tests:
+
 ```bash
 bun test e2e/
 ```
@@ -185,26 +189,28 @@ bun test e2e/
 
 This server requires access to your Obsidian vault directory. Access is typically granted by the client application (like Claude Desktop) based on its configuration.
 
--   The server performs path safety checks to prevent tools from accessing files outside the specified vault directory for a given operation.
--   Rate limiting and message size validation are implemented.
--   Always review tool actions requested by an AI assistant before approving them.
+- The server performs path safety checks to prevent tools from accessing files outside the specified vault directory for a given operation.
+- Rate limiting and message size validation are implemented.
+- Always review tool actions requested by an AI assistant before approving them.
 
 ## Troubleshooting
 
 Common issues:
 
 1.  **Server connection errors in Client (e.g., Claude Desktop)**
-    *   Verify the client's MCP server configuration (`command`, `args`), ensuring the path to `build/main.js` and the vault paths are correct and absolute.
-    *   Ensure the `--vault` arguments are formatted correctly (`name:/path/to/vault`).
-    *   Check client logs.
+
+    - Verify the client's MCP server configuration (`command`, `args`), ensuring the path to `build/main.js` and the vault paths are correct and absolute.
+    - Ensure the `--vault` arguments are formatted correctly (`name:/path/to/vault`).
+    - Check client logs.
 
 2.  **Tool errors ("Vault not found", "Path validation failed", etc.)**
-    *   Ensure the `vault` name sent in the tool arguments exactly matches one of the names provided in the `--vault` arguments during server startup.
-    *   Ensure the `path` argument is relative and correct.
-    *   Check server logs if running directly, or client logs.
+
+    - Ensure the `vault` name sent in the tool arguments exactly matches one of the names provided in the `--vault` arguments during server startup.
+    - Ensure the `path` argument is relative and correct.
+    - Check server logs if running directly, or client logs.
 
 3.  **Permission errors**
-    *   Ensure the user running the client (and thus the server process) has read/write permissions for all configured vault directories.
+    - Ensure the user running the client (and thus the server process) has read/write permissions for all configured vault directories.
 
 ## License
 

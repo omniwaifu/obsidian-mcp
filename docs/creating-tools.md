@@ -27,17 +27,19 @@ src/tools/your-tool-name/
 Start by defining a Zod schema for input validation. Always include descriptions for better documentation:
 
 ```typescript
-const schema = z.object({
-  param1: z.string()
-    .min(1, "Parameter cannot be empty")
-    .describe("Description of what this parameter does"),
-  param2: z.number()
-    .min(0)
-    .describe("Description of numeric constraints"),
-  optionalParam: z.string()
-    .optional()
-    .describe("Optional parameters should have clear descriptions too")
-}).strict();
+const schema = z
+  .object({
+    param1: z
+      .string()
+      .min(1, "Parameter cannot be empty")
+      .describe("Description of what this parameter does"),
+    param2: z.number().min(0).describe("Description of numeric constraints"),
+    optionalParam: z
+      .string()
+      .optional()
+      .describe("Optional parameters should have clear descriptions too"),
+  })
+  .strict();
 
 const schemaHandler = createSchemaHandler(schema);
 ```
@@ -51,7 +53,7 @@ async function performOperation(
   vaultPath: string,
   param1: string,
   param2: number,
-  optionalParam?: string
+  optionalParam?: string,
 ): Promise<OperationResult> {
   try {
     // Implement core functionality
@@ -66,7 +68,7 @@ async function performOperation(
     if (error instanceof McpError) {
       throw error;
     }
-    throw handleFsError(error, 'operation name');
+    throw handleFsError(error, "operation name");
   }
 }
 ```
@@ -96,20 +98,20 @@ Examples:
           vaultPath,
           validated.param1,
           validated.param2,
-          validated.optionalParam
+          validated.optionalParam,
         );
-        
+
         return createToolResponse(formatOperationResult(result));
       } catch (error) {
         if (error instanceof z.ZodError) {
           throw new McpError(
             ErrorCode.InvalidRequest,
-            `Invalid arguments: ${error.errors.map(e => e.message).join(", ")}`
+            `Invalid arguments: ${error.errors.map((e) => e.message).join(", ")}`,
           );
         }
         throw error;
       }
-    }
+    },
   };
 }
 ```
@@ -117,7 +119,9 @@ Examples:
 ## Best Practices
 
 ### Input Validation
+
 ✅ DO:
+
 - Use strict schemas with `.strict()`
 - Provide clear error messages for validation
 - Include descriptions for all parameters
@@ -131,43 +135,46 @@ When dealing with operations that have different validation requirements, prefer
 
 ```typescript
 // ✅ DO: Use discriminated unions for different operation types
-const deleteSchema = z.object({
-  operation: z.literal('delete'),
-  target: z.string(),
-  content: z.undefined()
-}).strict();
+const deleteSchema = z
+  .object({
+    operation: z.literal("delete"),
+    target: z.string(),
+    content: z.undefined(),
+  })
+  .strict();
 
-const editSchema = z.object({
-  operation: z.enum(['update', 'append']),
-  target: z.string(),
-  content: z.string().min(1)
-}).strict();
+const editSchema = z
+  .object({
+    operation: z.enum(["update", "append"]),
+    target: z.string(),
+    content: z.string().min(1),
+  })
+  .strict();
 
-const schema = z.discriminatedUnion('operation', [
-  deleteSchema,
-  editSchema
-]);
+const schema = z.discriminatedUnion("operation", [deleteSchema, editSchema]);
 
 // ❌ DON'T: Use complex refinements that don't translate well to JSON Schema
-const schema = z.object({
-  operation: z.enum(['delete', 'update', 'append']),
-  target: z.string(),
-  content: z.string().optional()
-}).superRefine((data, ctx) => {
-  if (data.operation === 'delete') {
-    if (data.content !== undefined) {
+const schema = z
+  .object({
+    operation: z.enum(["delete", "update", "append"]),
+    target: z.string(),
+    content: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.operation === "delete") {
+      if (data.content !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Content not allowed for delete",
+        });
+      }
+    } else if (!data.content) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Content not allowed for delete"
+        message: "Content required for non-delete",
       });
     }
-  } else if (!data.content) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Content required for non-delete"
-    });
-  }
-});
+  });
 ```
 
 #### Schema Design Patterns
@@ -175,6 +182,7 @@ const schema = z.object({
 When designing schemas:
 
 ✅ DO:
+
 - Break down complex schemas into smaller, focused schemas
 - Use discriminated unions for operations with different requirements
 - Keep validation logic simple and explicit
@@ -182,6 +190,7 @@ When designing schemas:
 - Use literal types for precise operation matching
 
 ❌ DON'T:
+
 ```typescript
 // Don't use complex refinements that access parent data
 schema.superRefine((val, ctx) => {
@@ -190,30 +199,33 @@ schema.superRefine((val, ctx) => {
 
 // Don't mix validation concerns
 const schema = z.object({
-  operation: z.enum(['delete', 'update']),
+  operation: z.enum(["delete", "update"]),
   content: z.string().superRefine((val, ctx) => {
     // Don't put operation-specific logic here
-  })
+  }),
 });
 
 // Don't skip schema validation
 const schema = z.object({
-  path: z.string() // Missing validation and description
+  path: z.string(), // Missing validation and description
 });
 
 // Don't allow unsafe paths
 const schema = z.object({
-  path: z.string().describe("File path")  // Missing path validation
+  path: z.string().describe("File path"), // Missing path validation
 });
 ```
 
 ### Error Handling
+
 ✅ DO:
+
 - Use utility functions for common errors
 - Convert filesystem errors to McpErrors
 - Provide specific error messages
 
 ❌ DON'T:
+
 ```typescript
 // Don't throw raw errors
 catch (error) {
@@ -227,36 +239,42 @@ handler: async (args) => {
 ```
 
 ### Response Formatting
+
 ✅ DO:
+
 - Use response utility functions
 - Return standardized result objects
 - Include relevant operation details
 
 ❌ DON'T:
+
 ```typescript
 // Don't return raw strings
 return createToolResponse("Done"); // Too vague
 
 // Don't skip using proper response types
 return {
-  message: "Success" // Missing proper response structure
+  message: "Success", // Missing proper response structure
 };
 ```
 
 ### Code Organization
+
 ✅ DO:
+
 - Split complex logic into smaller functions
 - Use utility functions for common operations
 - Keep the tool factory function clean
 
 ❌ DON'T:
+
 ```typescript
 // Don't mix concerns in the handler
 handler: async (args) => {
   // Don't put core logic here
   const files = await fs.readdir(path);
   // ... more direct implementation
-}
+};
 
 // Don't duplicate utility functions
 function isValidPath(path: string) {
@@ -271,12 +289,14 @@ When creating schemas, remember they need to be converted to JSON Schema for the
 ### JSON Schema Compatibility
 
 ✅ DO:
+
 - Test your schemas with the `createSchemaHandler` utility
 - Use standard Zod types that have clear JSON Schema equivalents
 - Structure complex validation using composition of simple schemas
 - Verify generated JSON Schema matches expected validation rules
 
 ❌ DON'T:
+
 - Rely heavily on refinements that don't translate to JSON Schema
 - Use complex validation logic that can't be represented in JSON Schema
 - Access parent context in nested validations
@@ -286,16 +306,16 @@ When creating schemas, remember they need to be converted to JSON Schema for the
 
 ```typescript
 // ✅ DO: Test schema conversion
-const schema = z.discriminatedUnion('operation', [
+const schema = z.discriminatedUnion("operation", [
   z.object({
-    operation: z.literal('read'),
-    path: z.string()
+    operation: z.literal("read"),
+    path: z.string(),
   }),
   z.object({
-    operation: z.literal('write'),
+    operation: z.literal("write"),
     path: z.string(),
-    content: z.string()
-  })
+    content: z.string(),
+  }),
 ]);
 
 // Verify schema handler creation succeeds
@@ -305,7 +325,7 @@ const schemaHandler = createSchemaHandler(schema);
 const schema = z.object({
   data: z.any().superRefine((val, ctx) => {
     // Complex custom validation that won't translate
-  })
+  }),
 });
 ```
 
@@ -323,12 +343,14 @@ Make use of existing utilities:
 ## Testing Your Tool
 
 1. Ensure your tool handles edge cases:
+
    - Invalid inputs
    - File/directory permissions
    - Non-existent paths
    - Concurrent operations
 
 2. Verify error messages are helpful:
+
    - Validation errors should guide the user
    - Operation errors should be specific
    - Path-related errors should be clear

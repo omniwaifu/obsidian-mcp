@@ -29,7 +29,7 @@ export class VaultResolver {
     if (!vaultPath) {
       throw new McpError(
         ErrorCode.InvalidParams,
-        `Unknown vault: ${vaultName}. Available vaults: ${Array.from(this.vaults.keys()).join(', ')}`
+        `Unknown vault: ${vaultName}. Available vaults: ${Array.from(this.vaults.keys()).join(", ")}`,
       );
     }
 

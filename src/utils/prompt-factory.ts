@@ -8,7 +8,7 @@ const registeredPrompts: Map<string, Prompt<any, any>> = new Map();
  * Register a prompt for use in the MCP server
  */
 export function registerPrompt<T extends z.ZodTypeAny, U extends z.ZodTypeAny>(
-  prompt: Prompt<T, U>
+  prompt: Prompt<T, U>,
 ): void {
   if (registeredPrompts.has(prompt.name)) {
     // Instead of throwing, just log a warning or return silently
@@ -25,18 +25,22 @@ export function registerPrompt<T extends z.ZodTypeAny, U extends z.ZodTypeAny>(
  */
 export function listPrompts() {
   return {
-    prompts: Array.from(registeredPrompts.values()).map(prompt => ({
+    prompts: Array.from(registeredPrompts.values()).map((prompt) => ({
       name: prompt.name,
       description: prompt.description,
-      arguments: prompt.arguments
-    }))
+      arguments: prompt.arguments,
+    })),
   };
 }
 
 /**
  * Get a specific prompt by name
  */
-export async function getPrompt(name: string, vaults: Map<string, string>, args?: any) {
+export async function getPrompt(
+  name: string,
+  vaults: Map<string, string>,
+  args?: any,
+) {
   const prompt = registeredPrompts.get(name);
   if (!prompt) {
     throw new McpError(ErrorCode.MethodNotFound, `Prompt not found: ${name}`);
@@ -50,7 +54,7 @@ export async function getPrompt(name: string, vaults: Map<string, string>, args?
     }
     throw new McpError(
       ErrorCode.InternalError,
-      `Failed to execute prompt: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to execute prompt: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }

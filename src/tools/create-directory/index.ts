@@ -7,20 +7,27 @@ import { validateVaultPath } from "../../utils/path.js";
 import { createToolResponse } from "../../utils/responses.js";
 
 // Input validation schema with descriptions
-const schema = z.object({
-  vault: z.string()
-    .min(1, "Vault name cannot be empty")
-    .describe("Name of the vault where the directory should be created"),
-  path: z.string()
-    .min(1, "Directory path cannot be empty")
-    .refine(dirPath => !path.isAbsolute(dirPath), 
-      "Directory path must be relative to vault root")
-    .describe("Path of the directory to create (relative to vault root)"),
-  recursive: z.boolean()
-    .optional()
-    .default(true)
-    .describe("Create parent directories if they don't exist")
-}).strict();
+const schema = z
+  .object({
+    vault: z
+      .string()
+      .min(1, "Vault name cannot be empty")
+      .describe("Name of the vault where the directory should be created"),
+    path: z
+      .string()
+      .min(1, "Directory path cannot be empty")
+      .refine(
+        (dirPath) => !path.isAbsolute(dirPath),
+        "Directory path must be relative to vault root",
+      )
+      .describe("Path of the directory to create (relative to vault root)"),
+    recursive: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Create parent directories if they don't exist"),
+  })
+  .strict();
 
 type CreateDirectoryInput = z.infer<typeof schema>;
 
@@ -28,7 +35,7 @@ type CreateDirectoryInput = z.infer<typeof schema>;
 async function createDirectory(
   vaultPath: string,
   dirPath: string,
-  recursive: boolean
+  recursive: boolean,
 ): Promise<string> {
   const fullPath = path.join(vaultPath, dirPath);
   const normalizedPath = path.normalize(fullPath);
@@ -42,10 +49,10 @@ async function createDirectory(
       await fs.access(normalizedPath);
       throw new McpError(
         ErrorCode.InvalidRequest,
-        `A directory already exists at: ${normalizedPath}`
+        `A directory already exists at: ${normalizedPath}`,
       );
     } catch (error: any) {
-      if (error.code !== 'ENOENT') {
+      if (error.code !== "ENOENT") {
         throw error;
       }
       // Directory doesn't exist, proceed with creation
@@ -58,20 +65,27 @@ async function createDirectory(
     }
     throw new McpError(
       ErrorCode.InternalError,
-      `Failed to create directory: ${error.message}`
+      `Failed to create directory: ${error.message}`,
     );
   }
 }
 
 export function createCreateDirectoryTool(vaults: Map<string, string>) {
-  return createTool<CreateDirectoryInput>({
-    name: "create-directory",
-    description: "Create a new directory in the specified vault",
-    schema,
-    handler: async (args, vaultPath, _vaultName) => {
-      const createdPath = await createDirectory(vaultPath, args.path, args.recursive ?? true);
-      const message = `Successfully created directory at: ${createdPath}`;
-      return createToolResponse(message);
-    }
-  }, vaults);
+  return createTool<CreateDirectoryInput>(
+    {
+      name: "create-directory",
+      description: "Create a new directory in the specified vault",
+      schema,
+      handler: async (args, vaultPath, _vaultName) => {
+        const createdPath = await createDirectory(
+          vaultPath,
+          args.path,
+          args.recursive ?? true,
+        );
+        const message = `Successfully created directory at: ${createdPath}`;
+        return createToolResponse(message);
+      },
+    },
+    vaults,
+  );
 }
