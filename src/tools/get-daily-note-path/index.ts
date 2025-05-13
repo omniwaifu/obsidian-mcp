@@ -184,13 +184,26 @@ async function getDailyNotePath(
     );
   }
 
-  // Ensure folder path separators are handled correctly for joining
-  const folderPart = folder.endsWith("/") ? folder.slice(0, -1) : folder;
-  const joinedPath = folderPart
-    ? path.join(folderPart, formattedDate)
-    : formattedDate;
+  // NEW APPROACH: Handle formats with path separators properly
+  // The format string may already include path components (like YYYY/MM/filename) 
+  // which should be preserved, rather than joined with the folder
+  let finalPath: string;
+  
+  if (folder && formattedDate.includes('/')) {
+    // If format contains path separators and folder is specified, 
+    // prepend the folder to the path
+    finalPath = path.join(folder, formattedDate);
+  } else if (folder) {
+    // If format doesn't contain path separators but folder is specified
+    const folderPart = folder.endsWith("/") ? folder.slice(0, -1) : folder;
+    finalPath = path.join(folderPart, formattedDate);
+  } else {
+    // No folder specified, just use the formatted date
+    finalPath = formattedDate;
+  }
 
-  const finalPath = ensureMarkdownExtension(joinedPath);
+  // Ensure the file has a markdown extension
+  finalPath = ensureMarkdownExtension(finalPath);
 
   return { path: finalPath };
 }

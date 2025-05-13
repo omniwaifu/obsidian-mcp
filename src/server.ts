@@ -10,10 +10,7 @@ import {
   McpError,
   ErrorCode,
 } from "@modelcontextprotocol/sdk/types.js";
-import {
-  RateLimiter,
-  validateMessageSize,
-} from "./utils/security.js";
+import { RateLimiter, validateMessageSize } from "./utils/security.js";
 import { Tool } from "./types.js";
 import { z } from "zod";
 import path from "path";
@@ -217,7 +214,9 @@ export class ObsidianServer {
     this.server.setRequestHandler(
       CallToolRequestSchema,
       async (request, extra) => {
-        console.error(`[ObsidianServer] Received CallToolRequest for tool: ${request?.params?.name ?? 'UNKNOWN'}`);
+        console.error(
+          `[ObsidianServer] Received CallToolRequest for tool: ${request?.params?.name ?? "UNKNOWN"}`,
+        );
         this.validateRequest(request);
         const params = request.params;
         if (!params || typeof params !== "object") {
