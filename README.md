@@ -11,15 +11,13 @@ This MCP has read and write access (if you allow it). Please. PLEASE backup your
 - Read and create notes in your vault
 - Edit existing notes (append, prepend, replace content while preserving frontmatter)
 - Move notes
-- Manage frontmatter (add/remove/list aliases, add/remove/rename tags)
+- Manage tags (add/remove tags from frontmatter)
 - Create directories and list directory contents
 - Delete notes
 - Update links automatically when notes are moved
 - List non-Markdown files (images, PDFs, etc.)
 - Search vault contents with basic operators (`path:`, `file:`)
-- List bookmarks from the core Bookmarks plugin
 - Get the path for today's daily note
-  - Path is cached, so if you change your path to daily notes, you might need to wait a bit for the cache to update.
 - List and toggle basic Markdown tasks in notes
 - Configurable vault access
 
@@ -124,28 +122,34 @@ To run the server locally during development, use `node build/main.js` or `bun b
 
 The server exposes tools via the Model Context Protocol. The exact list can be retrieved using an MCP client, but key tools include:
 
+### Core Operations
+
 - `read-note`: Read the contents of a note.
 - `create-note`: Create a new note.
 - `edit-note`: Edit an existing note (supports `append`, `prepend`, `replace` operations).
 - `move-note`: Move/rename a note, updating incoming links.
+- `delete-note`: Delete a note.
+- `search-vault`: Search notes (supports `path:`, `file:` operators).
+
+### Organization
+
 - `create-directory`: Create a new directory.
 - `list-directory`: List files and directories in a vault path.
-- `delete-note`: Delete a note.
-- `add-alias`: Add an alias to a note's frontmatter.
-- `remove-alias`: Remove an alias from a note's frontmatter.
-- `list-aliases`: List all aliases for a note.
+- `list-files`: List non-Markdown files in the vault or a sub-directory.
 - `add-tags`: Add tags to a note's frontmatter.
 - `remove-tags`: Remove tags from a note's frontmatter.
-- `rename-tag`: Rename a tag across the entire vault.
-- `list-files`: List non-Markdown files in the vault or a sub-directory.
-- `search-vault`: Search notes (supports `path:`, `file:` operators).
-- `list-bookmarks`: List items from the Bookmarks core plugin.
-- `get-daily-note-path`: Calculate the expected path for today's daily note.
+
+### Task Management
+
 - `get-tasks-in-note`: List basic Markdown tasks (`- [ ]`/`- [x]`) in a note.
 - `toggle-task`: Toggle the completion status of a task on a specific line.
-- _(Potentially others like remove-tags, etc.)_
 
-**Tool Usage:** All tools that operate on files (`read-note`, `edit-note`, `create-note`, `move-note`, `add-alias`, `add-tags`, `list-files`, `search-vault` with `path:`, `list-directory`, `get-tasks-in-note`, `toggle-task`, etc.) require a `vault` argument specifying the **name** of the target vault (e.g., `"minerva"`, `"personal"` from the configuration example above). They also require a `path` argument relative to the vault root (where applicable).
+### Obsidian-specific
+
+- `get-daily-note-path`: Calculate the expected path for today's daily note.
+- `list-available-vaults`: List configured vaults (only available when multiple vaults are configured).
+
+**Tool Usage:** All tools that operate on files require a `vault` argument specifying the **name** of the target vault (e.g., `"minerva"`, `"personal"` from the configuration example above). They also require a `path` argument relative to the vault root (where applicable).
 
 Example `read-note` arguments:
 `{ "vault": "personal", "path": "journal/2024-01-15.md" }`
@@ -181,8 +185,8 @@ bun test e2e/
     4. Mark the 'Call Mom' task as complete.
     5. List the tasks again to confirm the change.
     6. Create a new note in the root called "Test Backlink Note.md" with the content "This note links to [[Today's daily note path]]". (Replace 'Today's daily note path' with the actual path obtained in step 1).
-    8. List the contents of the root directory.
-    9. List my bookmarks.
+    7. List the contents of the root directory.
+    8. Search the vault for notes containing "Project X".
 ```
 
 ## Security
