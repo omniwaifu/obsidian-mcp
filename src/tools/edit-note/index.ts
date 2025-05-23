@@ -34,12 +34,7 @@ const editSchema = z
       .enum(["append", "prepend", "replace"])
       .describe(
         "Type of edit operation - must be one of: 'append', 'prepend', 'replace'",
-      )
-      .refine((op) => ["append", "prepend", "replace"].includes(op), {
-        message:
-          "Invalid operation. Must be one of: 'append', 'prepend', 'replace'",
-        path: ["operation"],
-      }),
+      ),
     content: z
       .string()
       .min(1, "Content cannot be empty")
@@ -58,7 +53,7 @@ type EditNoteInput = z.infer<typeof schema>;
 
 async function editNote(
   vaultPath: string,
-  notePath: string, // Changed from filename/folder
+  notePath: string,
   operation: EditOperation,
   content: string,
 ): Promise<FileOperationResult> {
@@ -69,97 +64,95 @@ async function editNote(
   // Validate path is within vault
   validateVaultPath(vaultPath, fullPath);
 
+  // Check if file exists first
+  if (!(await fileExists(fullPath))) {
+    throw createNoteNotFoundError(notePath);
+  }
+
   // Create unique backup filename
   const timestamp = Date.now();
   const backupPath = `${fullPath}.${timestamp}.backup`;
 
   try {
-    // Create backup first
-    if (await fileExists(fullPath)) {
-      await fs.copyFile(fullPath, backupPath);
-    } else {
-      // If file doesn't exist for append/prepend/replace, throw error
-      throw createNoteNotFoundError(notePath); // Use relative path in error
-    }
+    // Create backup
+    await fs.copyFile(fullPath, backupPath);
+
+    // Read existing content
+    const existingContent = await fs.readFile(fullPath, "utf-8");
+
+    // Prepare new content based on operation
+    let finalContentToWrite: string;
+    const trimmedExisting = existingContent.trim();
+    const trimmedContent = content.trim();
 
     switch (operation) {
       case "append":
+        // Append: Add new content after existing content
+        finalContentToWrite = trimmedExisting
+          ? `${trimmedExisting}\n\n${trimmedContent}`
+          : trimmedContent;
+        break;
+
       case "prepend":
-      case "replace": {
-        try {
-          // Read existing content
-          const existingContent = await fs.readFile(fullPath, "utf-8");
+        // Prepend: Add new content before existing content
+        finalContentToWrite = trimmedExisting
+          ? `${trimmedContent}\n\n${trimmedExisting}`
+          : trimmedContent;
+        break;
 
-          // Prepare new content based on operation
-          let finalContentToWrite: string;
-          if (operation === "append") {
-            // Append: Add new content after existing content
-            finalContentToWrite =
-              existingContent.trim() +
-              (existingContent.trim() ? "\n\n" : "") +
-              content;
-          } else if (operation === "prepend") {
-            // Prepend: Add new content before existing content
-            finalContentToWrite =
-              content +
-              (existingContent.trim() ? "\n\n" : "") +
-              existingContent.trim();
-          } else {
-            // Replace: Parse existing, replace content body, keep frontmatter
-            const parsedNote = parseNote(existingContent);
-            parsedNote.content = content; // Replace only the content part
-            finalContentToWrite = stringifyNote(parsedNote); // Combine original frontmatter with new content
-          }
+      case "replace":
+        // Replace: Parse existing, replace content body, keep frontmatter
+        const parsedNote = parseNote(existingContent);
+        parsedNote.content = trimmedContent;
+        finalContentToWrite = stringifyNote(parsedNote);
+        break;
 
-          // Write the final content
-          await fs.writeFile(fullPath, finalContentToWrite);
-
-          // Clean up backup on success
-          await fs.unlink(backupPath);
-
-          // Correctly form past tense for the message
-          const pastTenseOperation =
-            operation === "replace" ? "replaced" : `${operation}ed`;
-
-          return {
-            success: true,
-            message: `Note ${pastTenseOperation} successfully`,
-            path: fullPath,
-            operation: "edit",
-          };
-        } catch (error: unknown) {
-          // On error, attempt to restore from backup
-          if (await fileExists(backupPath)) {
-            try {
-              await fs.copyFile(backupPath, fullPath);
-              await fs.unlink(backupPath);
-            } catch (rollbackError: unknown) {
-              const errorMessage =
-                error instanceof Error ? error.message : String(error);
-              const rollbackErrorMessage =
-                rollbackError instanceof Error
-                  ? rollbackError.message
-                  : String(rollbackError);
-
-              throw new McpError(
-                ErrorCode.InternalError,
-                `Failed to rollback changes. Original error: ${errorMessage}. Rollback error: ${rollbackErrorMessage}. Backup file preserved at ${backupPath}`,
-              );
-            }
-          }
-          throw error;
-        }
-      }
-
-      default: {
-        const _exhaustiveCheck: never = operation;
+      default:
         throw new McpError(
           ErrorCode.InvalidParams,
           `Invalid operation: ${operation}`,
         );
-      }
     }
+
+    // Write the final content
+    await fs.writeFile(fullPath, finalContentToWrite);
+
+    // Clean up backup on success
+    await fs.unlink(backupPath);
+
+    // Form past tense for the message
+    const pastTenseOperation =
+      operation === "replace" ? "replaced" : `${operation}ed`;
+
+    return {
+      success: true,
+      message: `Note ${pastTenseOperation} successfully`,
+      path: fullPath,
+      operation: "edit",
+    };
   } catch (error: unknown) {
+    // Attempt to restore from backup
+    try {
+      if (await fileExists(backupPath)) {
+        await fs.copyFile(backupPath, fullPath);
+        await fs.unlink(backupPath);
+      }
+    } catch (rollbackError) {
+      // If rollback fails, preserve backup and include both errors
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const rollbackErrorMessage =
+        rollbackError instanceof Error
+          ? rollbackError.message
+          : String(rollbackError);
+
+      throw new McpError(
+        ErrorCode.InternalError,
+        `Failed to rollback changes. Original error: ${errorMessage}. Rollback error: ${rollbackErrorMessage}. Backup preserved at ${backupPath}`,
+      );
+    }
+
+    // Re-throw original error after successful rollback
     if (error instanceof McpError) {
       throw error;
     }
