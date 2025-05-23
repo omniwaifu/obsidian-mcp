@@ -8,14 +8,6 @@ import { createTool } from "../../utils/tool-factory.js";
 import { ensureMarkdownExtension } from "../../utils/path.js";
 import { fileExists } from "../../utils/files.js";
 
-// --- Cache Setup ---
-interface CachedConfig {
-  config: DailyNotesConfig;
-  timestamp: number;
-}
-const dailyNoteConfigCache = new Map<string, CachedConfig>();
-const CACHE_DURATION_MS = 60 * 1000; // Cache for 60 seconds
-
 // --- Configuration Interfaces ---
 interface DailyNotesConfig {
   folder?: string;
@@ -93,90 +85,72 @@ function formatSimpleDate(date: Date, formatString: string): string {
 async function getDailyNotePath(
   args: GetDailyNotePathInput,
   vaultPath: string,
-  vaultName: string, // Need vaultName for caching key
-): Promise<{ path: string }> {
-  const now = Date.now();
-  const cachedEntry = dailyNoteConfigCache.get(vaultName);
+): Promise<string> {
+  // Read daily notes configuration
+  const configFilePath = path.join(vaultPath, ".obsidian", "daily-notes.json");
   let config: DailyNotesConfig;
-
-  // Check cache validity
-  if (cachedEntry && now - cachedEntry.timestamp < CACHE_DURATION_MS) {
-    config = cachedEntry.config;
-  } else {
-    // Cache miss or expired
-    const configFilePath = path.join(
-      vaultPath,
-      ".obsidian",
-      "daily-notes.json",
-    );
-    try {
-      const content = await fs.readFile(configFilePath, "utf8");
-      config = JSON.parse(content) as DailyNotesConfig;
-      // Update cache
-      dailyNoteConfigCache.set(vaultName, { config, timestamp: now });
-    } catch (error: any) {
-      if (error.code === "ENOENT") {
-        // Don't cache if file not found, but throw error
-        throw new McpError(
-          ErrorCode.InvalidParams,
-          "Daily Notes configuration file (daily-notes.json) not found in .obsidian folder. Is the plugin enabled and configured?",
-        );
-      }
-      if (error instanceof SyntaxError) {
-        // Don't cache if parsing fails
-        throw new McpError(
-          ErrorCode.InternalError,
-          `Error parsing daily-notes.json: ${error.message}`,
-        );
-      }
-      // Don't cache for other read errors
-      throw handleFsError(error, "read daily notes config");
+  
+  try {
+    const content = await fs.readFile(configFilePath, "utf8");
+    config = JSON.parse(content) as DailyNotesConfig;
+  } catch (error: any) {
+    if (error.code === "ENOENT") {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        "Daily Notes configuration file (daily-notes.json) not found in .obsidian folder. Is the plugin enabled and configured?",
+      );
     }
+    if (error instanceof SyntaxError) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `Error parsing daily-notes.json: ${error.message}`,
+      );
+    }
+    throw handleFsError(error, "read daily notes config");
   }
 
-  // Proceed with using the config (either cached or freshly read)
   if (!config.format) {
-    // If config is invalid (e.g., missing format), potentially invalidate cache?
-    // For now, we just throw. If the file *was* read, it would have been cached above.
-    // If it came from cache, it implies it was valid previously.
-    dailyNoteConfigCache.delete(vaultName); // Invalidate cache if format missing
     throw new McpError(
       ErrorCode.InvalidRequest,
       "Daily notes configuration is missing the 'format' field.",
     );
   }
+
   const folder = config.folder || "";
 
   // Determine which date to use
   let targetDate: Date;
   if (args.date) {
-    let parsed: Date;
+    // Parse all date inputs as local time for consistency with daily notes
+    // Daily notes are typically about "today" in the user's local timezone
     if (/^\d{4}-\d{2}-\d{2}$/.test(args.date)) {
-      // YYYY-MM-DD: parse as local time
+      // YYYY-MM-DD format
       const [year, month, day] = args.date.split("-").map(Number);
-      parsed = new Date(year, month - 1, day);
+      targetDate = new Date(year, month - 1, day);
+    } else if (/^\d{4}-\d{2}-\d{2}T/.test(args.date)) {
+      // ISO format with time - extract just the date part for consistency
+      const datePart = args.date.split("T")[0];
+      const [year, month, day] = datePart.split("-").map(Number);
+      targetDate = new Date(year, month - 1, day);
     } else {
-      // Fallback: let Date parse (for ISO with time)
-      parsed = new Date(args.date);
+      // Try to parse as-is for other formats
+      targetDate = new Date(args.date);
     }
-    if (isNaN(parsed.getTime())) {
-      dailyNoteConfigCache.delete(vaultName);
+    
+    if (isNaN(targetDate.getTime())) {
       throw new McpError(
         ErrorCode.InvalidParams,
-        `Invalid date format: '${args.date}'. Use ISO 8601 or YYYY-MM-DD.`,
+        `Invalid date format: '${args.date}'. Use YYYY-MM-DD or ISO 8601 format.`,
       );
     }
-    targetDate = parsed;
   } else {
     targetDate = new Date();
   }
+
   let formattedDate: string;
   try {
     formattedDate = formatSimpleDate(targetDate, config.format);
   } catch (formatError) {
-    if (cachedEntry) {
-      dailyNoteConfigCache.delete(vaultName);
-    }
     if (formatError instanceof McpError) throw formatError;
     throw new McpError(
       ErrorCode.InvalidParams,
@@ -184,28 +158,13 @@ async function getDailyNotePath(
     );
   }
 
-  // NEW APPROACH: Handle formats with path separators properly
-  // The format string may already include path components (like YYYY/MM/filename) 
-  // which should be preserved, rather than joined with the folder
-  let finalPath: string;
-  
-  if (folder && formattedDate.includes('/')) {
-    // If format contains path separators and folder is specified, 
-    // prepend the folder to the path
-    finalPath = path.join(folder, formattedDate);
-  } else if (folder) {
-    // If format doesn't contain path separators but folder is specified
-    const folderPart = folder.endsWith("/") ? folder.slice(0, -1) : folder;
-    finalPath = path.join(folderPart, formattedDate);
-  } else {
-    // No folder specified, just use the formatted date
-    finalPath = formattedDate;
-  }
+  // Construct the final path
+  const finalPath = folder 
+    ? path.join(folder, formattedDate)
+    : formattedDate;
 
-  // Ensure the file has a markdown extension
-  finalPath = ensureMarkdownExtension(finalPath);
-
-  return { path: finalPath };
+  // Ensure the file has a markdown extension and return the path directly
+  return ensureMarkdownExtension(finalPath);
 }
 
 // --- Tool Factory ---
@@ -213,46 +172,34 @@ export function createGetDailyNotePathTool(vaults: Map<string, string>) {
   return createTool<GetDailyNotePathInput>(
     {
       name: "get-daily-note-path",
-      description: `Calculates the expected relative path for a daily note based on the Daily Notes core plugin settings (.obsidian/daily-notes.json).\\n\\nYou can specify a date (ISO 8601 or YYYY-MM-DD) to get the path for that day, or omit it to get today\'s path.\\n\\nExamples:\\n- Get today\'s path: { "vault": "my_vault" }\\n- Get path for a specific date: { "vault": "my_vault", "date": "2024-06-01" }`,
+      description: `Calculates the expected relative path for a daily note based on the Daily Notes core plugin settings (.obsidian/daily-notes.json).
+
+You can specify a date (ISO 8601 or YYYY-MM-DD) to get the path for that day, or omit it to get today's path.
+All dates are treated as local time for consistency with daily note usage.
+
+Examples:
+- Get today's path: { "vault": "my_vault" }
+- Get path for a specific date: { "vault": "my_vault", "date": "2024-06-01" }
+- ISO format: { "vault": "my_vault", "date": "2024-06-01T10:00:00Z" } (time ignored, date used as local)`,
       schema,
       handler: async (args, vaultPath, vaultName) => {
         try {
-          // getDailyNotePath returns { path: string } on success or throws McpError
-          const result = await getDailyNotePath(args, vaultPath, vaultName);
-          // Return a structured success object for the capability layer
+          const path = await getDailyNotePath(args, vaultPath);
           return {
             success: true,
-            path: result.path,
-            message: `Successfully determined daily note path: ${result.path}`,
+            path: path,
+            message: `Successfully determined daily note path: ${path}`,
           };
         } catch (error: any) {
-          let errorToThrow: McpError;
           if (error instanceof McpError) {
-            // Log the specific McpError before re-throwing
-            console.error(
-              `[GetDailyNotePathTool] McpError for vault \'${args.vault}\' - Code: ${error.code}, Message: ${error.message}, Details: ${JSON.stringify(error.details)}`,
-            );
-            errorToThrow = error; // Re-throw the original McpError
+            throw error;
           } else {
-            // For other unexpected errors, log them and convert to a standard McpError
-            const errorMessage =
-              error instanceof Error ? error.message : String(error);
-            console.error(
-              `[GetDailyNotePathTool] Unexpected error for vault \'${args.vault}\': ${errorMessage}`,
-              error, // Log the full error object for server-side inspection
-            );
-            errorToThrow = new McpError(
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new McpError(
               ErrorCode.InternalError,
-              `Unexpected error in get-daily-note-path for vault \'${args.vault}\': ${errorMessage}`,
-              {
-                originalErrorStack:
-                  error instanceof Error ? error.stack : undefined,
-              },
+              `Unexpected error in get-daily-note-path for vault '${args.vault}': ${errorMessage}`,
             );
           }
-          // The MCP framework will catch this thrown error and formulate
-          // a { success: false, error: { code, message, details } } response.
-          throw errorToThrow;
         }
       },
     },
