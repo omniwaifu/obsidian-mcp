@@ -27,17 +27,22 @@ const schema = z
         "Path must be relative to vault root",
       )
       .describe(
-        "Path of the note relative to vault root (e.g., 'folder/note.md')",
+        "Path of the note relative to vault root (e.g., 'folder/note.md'). The .md extension is added automatically if not present.",
       ),
   })
   .strict();
 
 type ReadNoteInput = z.infer<typeof schema>;
 
+// Extended result type for read operations
+interface ReadNoteResult extends FileOperationResult {
+  content: string;
+}
+
 async function readNote(
   vaultPath: string,
-  notePath: string, // Changed from filename, folder
-): Promise<FileOperationResult & { content: string }> {
+  notePath: string,
+): Promise<ReadNoteResult> {
   // Apply MD extension check here to the full relative path
   const sanitizedPath = ensureMarkdownExtension(notePath);
   const fullPath = path.join(vaultPath, sanitizedPath);
@@ -45,13 +50,12 @@ async function readNote(
   // Validate path is within vault
   validateVaultPath(vaultPath, fullPath);
 
-  try {
-    // Check if file exists
-    if (!(await fileExists(fullPath))) {
-      // Use the provided relative path in the error
-      throw createNoteNotFoundError(notePath);
-    }
+  // Check if file exists first (fail fast)
+  if (!(await fileExists(fullPath))) {
+    throw createNoteNotFoundError(notePath);
+  }
 
+  try {
     // Read the file content
     const content = await fs.readFile(fullPath, "utf-8");
 
@@ -59,7 +63,7 @@ async function readNote(
       success: true,
       message: "Note read successfully",
       path: fullPath,
-      operation: "edit", // Still using 'edit' for now
+      operation: "read",
       content: content,
     };
   } catch (error: unknown) {
@@ -75,24 +79,25 @@ export function createReadNoteTool(vaults: Map<string, string>) {
     {
       name: "read-note",
       description: `Read the content of an existing note in the vault.
+The tool automatically adds the .md extension if not provided.
 
 Examples:
 - Root note: { "vault": "vault1", "path": "note.md" }
+- Without extension: { "vault": "vault1", "path": "note" }
 - Subfolder note: { "vault": "vault1", "path": "journal/2024/note.md" }`,
       schema,
       handler: async (args, vaultPath, _vaultName) => {
-        // Pass args.path directly
         const result = await readNote(vaultPath, args.path);
 
-        const formattedResult = formatFileResult({
+        // Return content first, followed by metadata
+        const metadata = formatFileResult({
           success: result.success,
           message: result.message,
           path: result.path,
           operation: result.operation,
         });
 
-        // Ensure consistent response format
-        return createToolResponse(`${result.content}\n\n${formattedResult}`);
+        return createToolResponse(`${result.content}\n\n---\n${metadata}`);
       },
     },
     vaults,
