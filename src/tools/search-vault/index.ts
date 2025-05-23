@@ -93,79 +93,38 @@ function normalizeTagQuery(query: string): string {
   return normalizeTag(query.slice(4));
 }
 
-async function searchFilenames(
-  vaultPath: string,
-  query: string,
-  options: SearchOptions,
-  filePathPattern?: string,
-): Promise<SearchResult[]> {
-  try {
-    // Use options.path which might be overridden by path: operator
-    const searchDir = options.path
-      ? safeJoinPath(vaultPath, options.path)
-      : vaultPath;
-    const files = await getAllMarkdownFiles(vaultPath, searchDir);
-    const results: SearchResult[] = [];
-    const searchQuery = options.caseSensitive ? query : query.toLowerCase();
-    const filePatternLower =
-      filePathPattern && !options.caseSensitive
-        ? filePathPattern.toLowerCase()
-        : filePathPattern;
-
-    for (const file of files) {
-      const relativePath = path.relative(vaultPath, file);
-      const searchTarget = options.caseSensitive
-        ? relativePath
-        : relativePath.toLowerCase();
-
-      // Check against file: pattern first if provided
-      if (filePatternLower && !searchTarget.includes(filePatternLower)) {
-        continue; // Skip if filename doesn't match file: pattern
-      }
-
-      // Check against main query if it exists or if searchType is filename/both
-      if (
-        options.searchType !== "content" &&
-        (!searchQuery || searchTarget.includes(searchQuery))
-      ) {
-        results.push({
-          file: relativePath,
-          matches: [
-            {
-              line: 0,
-              text: `Filename match: ${relativePath}`,
-            },
-          ],
-        });
-      }
-    }
-
-    return results;
-  } catch (error) {
-    if (error instanceof McpError) throw error;
-    throw handleFsError(error, "search filenames");
-  }
+// --- Unified Search Logic ---
+interface SearchContext {
+  vaultPath: string;
+  normalizedVaultPath: string;
+  options: SearchOptions;
+  isTagQuery: boolean;
+  normalizedTagQuery: string;
+  searchQuery: string;
+  filePattern?: string;
+  shouldSearchFilenames: boolean;
+  shouldSearchContent: boolean;
 }
 
-async function searchContent(
-  vaultPath: string,
-  query: string,
-  options: SearchOptions,
-  filePathPattern?: string,
-): Promise<SearchResult[]> {
+async function performUnifiedSearch(
+  context: SearchContext,
+): Promise<{ results: SearchResult[]; errors: string[] }> {
+  const { vaultPath, normalizedVaultPath, options } = context;
+  const results: SearchResult[] = [];
+  const errors: string[] = [];
+
   try {
+    // Get all files once
     const searchDir = options.path
       ? safeJoinPath(vaultPath, options.path)
       : vaultPath;
     const files = await getAllMarkdownFiles(vaultPath, searchDir);
-    const results: SearchResult[] = [];
-    const isTagQuery = isTagSearch(query);
-    const normalizedTagQuery = isTagQuery ? normalizeTagQuery(query) : "";
-    const searchQuery = options.caseSensitive ? query : query.toLowerCase();
+
+    // Pre-calculate case-sensitive values once
     const filePatternLower =
-      filePathPattern && !options.caseSensitive
-        ? filePathPattern.toLowerCase()
-        : filePathPattern;
+      context.filePattern && !options.caseSensitive
+        ? context.filePattern.toLowerCase()
+        : context.filePattern;
 
     for (const file of files) {
       const relativePath = path.relative(vaultPath, file);
@@ -173,71 +132,91 @@ async function searchContent(
         ? relativePath
         : relativePath.toLowerCase();
 
-      // Check against file: pattern first if provided
+      // Filter by file pattern first if provided
       if (filePatternLower && !searchTargetFile.includes(filePatternLower)) {
-        continue; // Skip if filename doesn't match file: pattern
+        continue;
       }
 
-      // Skip content search if query is empty and it's not a tag search
-      if (!query && !isTagQuery) continue;
+      const fileMatches: SearchResult["matches"] = [];
 
-      try {
-        const content = await fs.readFile(file, "utf-8");
-        const lines = content.split("\n");
-        const matches: SearchResult["matches"] = [];
+      // Filename search
+      if (context.shouldSearchFilenames) {
+        if (
+          !context.searchQuery ||
+          searchTargetFile.includes(context.searchQuery)
+        ) {
+          fileMatches.push({
+            line: 0,
+            text: `Filename match: ${relativePath}`,
+          });
+        }
+      }
 
-        if (isTagQuery) {
-          // For tag searches, extract all tags from the content
-          const fileTags = extractTags(content);
+      // Content search
+      if (
+        context.shouldSearchContent &&
+        (context.searchQuery || context.isTagQuery)
+      ) {
+        try {
+          const content = await fs.readFile(file, "utf-8");
 
-          lines.forEach((line, index) => {
-            // Look for tag matches in each line
-            const lineTags = extractTags(line);
-            const hasMatchingTag = lineTags.some((tag) => {
-              const normalizedTag = normalizeTag(tag);
-              return (
-                normalizedTag === normalizedTagQuery ||
-                matchesTagPattern(normalizedTagQuery, normalizedTag)
-              );
+          if (context.isTagQuery) {
+            // Tag search - extract all tags from content
+            const fileTags = extractTags(content);
+            const lines = content.split("\n");
+
+            lines.forEach((line, index) => {
+              const lineTags = extractTags(line);
+              const hasMatchingTag = lineTags.some((tag) => {
+                const normalizedTag = normalizeTag(tag);
+                return (
+                  normalizedTag === context.normalizedTagQuery ||
+                  matchesTagPattern(context.normalizedTagQuery, normalizedTag)
+                );
+              });
+
+              if (hasMatchingTag) {
+                fileMatches.push({
+                  line: index + 1,
+                  text: line.trim(),
+                });
+              }
             });
-
-            if (hasMatchingTag) {
-              matches.push({
-                line: index + 1,
-                text: line.trim(),
-              });
-            }
-          });
-        } else {
-          // Regular text search
-          lines.forEach((line, index) => {
-            const searchLine = options.caseSensitive
-              ? line
-              : line.toLowerCase();
-            if (searchLine.includes(searchQuery)) {
-              matches.push({
-                line: index + 1,
-                text: line.trim(),
-              });
-            }
-          });
+          } else if (context.searchQuery) {
+            // Regular text search
+            const lines = content.split("\n");
+            lines.forEach((line, index) => {
+              const searchLine = options.caseSensitive
+                ? line
+                : line.toLowerCase();
+              if (searchLine.includes(context.searchQuery)) {
+                fileMatches.push({
+                  line: index + 1,
+                  text: line.trim(),
+                });
+              }
+            });
+          }
+        } catch (err) {
+          errors.push(
+            `Error reading file ${relativePath}: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
+      }
 
-        if (matches.length > 0) {
-          results.push({
-            file: relativePath,
-            matches,
-          });
-        }
-      } catch (err) {
-        console.error(`Error reading file ${file}:`, err);
+      // Add to results if we found matches
+      if (fileMatches.length > 0) {
+        results.push({
+          file: relativePath,
+          matches: fileMatches,
+        });
       }
     }
 
-    return results;
+    return { results, errors };
   } catch (error) {
     if (error instanceof McpError) throw error;
-    throw handleFsError(error, "search content");
+    throw handleFsError(error, "unified search");
   }
 }
 
@@ -256,105 +235,60 @@ async function searchVault(
 
     // Normalize vault path upfront
     const normalizedVaultPath = normalizePath(vaultPath);
-    let results: SearchResult[] = [];
-    let errors: string[] = [];
 
-    // Determine effective search types based on operators and cleanQuery
-    let runFilenameSearch =
-      currentOptions.searchType === "filename" ||
-      currentOptions.searchType === "both" ||
-      !!searchFile;
-    let runContentSearch =
-      (currentOptions.searchType === "content" ||
-        currentOptions.searchType === "both") &&
-      (!!cleanQuery || isTagSearch(cleanQuery));
+    // Determine search requirements
+    const isTag = isTagSearch(cleanQuery);
+    const hasQuery = !!cleanQuery;
+    const hasFilePattern = !!searchFile;
 
-    // If only file: operator is present, search filenames
-    if (
-      searchFile &&
-      !cleanQuery &&
-      !isTagSearch(cleanQuery) &&
-      currentOptions.searchType !== "content"
-    ) {
-      runFilenameSearch = true;
-      runContentSearch = false;
-    }
-    // If only path: operator is present, search both content and filename by default?
-    // Let's stick to the provided searchType or default ('content') unless overridden
-    if (!searchFile && !cleanQuery && !isTagSearch(cleanQuery) && searchPath) {
-      // If only path: is given, maybe default to both?
-      // Or respect original searchType option. Let's respect option for now.
-      // runFilenameSearch = currentOptions.searchType === 'filename' || currentOptions.searchType === 'both';
-      // runContentSearch = currentOptions.searchType === 'content' || currentOptions.searchType === 'both';
+    // Determine what to search based on searchType and query content
+    let shouldSearchFilenames = false;
+    let shouldSearchContent = false;
+
+    switch (currentOptions.searchType) {
+      case "filename":
+        shouldSearchFilenames = true;
+        break;
+      case "content":
+        shouldSearchContent = hasQuery || isTag;
+        break;
+      case "both":
+        shouldSearchFilenames = true;
+        shouldSearchContent = hasQuery || isTag;
+        break;
     }
 
-    // --- Perform Searches ---
-
-    if (runFilenameSearch) {
-      try {
-        // Pass cleanQuery for text matching and searchFile for filtering
-        const filenameResults = await searchFilenames(
-          normalizedVaultPath,
-          cleanQuery,
-          currentOptions,
-          searchFile,
-        );
-        // Merge results carefully - avoid duplicates if both content/filename search run
-        filenameResults.forEach((fr) => {
-          if (!results.some((r) => r.file === fr.file)) {
-            results.push(fr);
-          }
-        });
-      } catch (error) {
-        if (error instanceof McpError) {
-          errors.push(`Filename search error: ${error.message}`);
-        } else {
-          errors.push(
-            `Filename search failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      }
+    // If only file: operator is present, force filename search
+    if (hasFilePattern && !hasQuery && !isTag) {
+      shouldSearchFilenames = true;
+      shouldSearchContent = false;
     }
 
-    if (runContentSearch) {
-      try {
-        // Pass cleanQuery for content matching and searchFile for filtering
-        const contentResults = await searchContent(
-          normalizedVaultPath,
-          cleanQuery,
-          currentOptions,
-          searchFile,
-        );
-        // Merge results, potentially adding matches to existing file entries from filename search
-        contentResults.forEach((cr) => {
-          const existing = results.find((r) => r.file === cr.file);
-          if (existing) {
-            existing.matches = [
-              ...(existing.matches || []),
-              ...(cr.matches || []),
-            ];
-          } else {
-            results.push(cr);
-          }
-        });
-      } catch (error) {
-        if (error instanceof McpError) {
-          errors.push(`Content search error: ${error.message}`);
-        } else {
-          errors.push(
-            `Content search failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      }
-    }
+    // Create search context
+    const searchContext: SearchContext = {
+      vaultPath,
+      normalizedVaultPath,
+      options: currentOptions,
+      isTagQuery: isTag,
+      normalizedTagQuery: isTag ? normalizeTagQuery(cleanQuery) : "",
+      searchQuery: currentOptions.caseSensitive
+        ? cleanQuery
+        : cleanQuery.toLowerCase(),
+      filePattern: searchFile,
+      shouldSearchFilenames,
+      shouldSearchContent,
+    };
 
-    // Recalculate total matches after potential merging
+    // Perform unified search
+    const { results, errors } = await performUnifiedSearch(searchContext);
+
+    // Calculate total matches
     const totalMatches = results.reduce(
       (sum, result) => sum + (result.matches?.length ?? 0),
       0,
     );
 
-    // If we have some results but also errors, we'll return partial results with a warning
+    // Handle results based on success/error state
     if (results.length > 0 && errors.length > 0) {
       return {
         success: true,
@@ -365,7 +299,6 @@ async function searchVault(
       };
     }
 
-    // If we have no results and errors, throw an error
     if (results.length === 0 && errors.length > 0) {
       throw new McpError(
         ErrorCode.InternalError,
