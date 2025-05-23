@@ -35,9 +35,9 @@ const schema = z
       .min(1, "At least one tag must be specified")
       .refine(
         (tags) => tags.every(validateTag),
-        "Invalid tag format. Tags must contain only letters, numbers, and forward slashes for hierarchy.",
+        "Invalid tag format. Tags can contain letters, numbers, hyphens, underscores, and forward slashes for hierarchy (e.g., 'ml/ops/training', 'data-processing', 'ml_ops').",
       )
-      .describe("Array of tags to add (e.g., 'status/active', 'project/docs')"),
+      .describe("Array of tags to add. Use hierarchical tags with slashes for best organization (e.g., 'ml/ops/training', 'project/docs/api'). Also supports hyphens and underscores."),
     location: z
       .enum(["frontmatter", "content", "both"])
       .optional()
@@ -185,9 +185,12 @@ export function createAddTagsTool(vaults: Map<string, string>) {
       name: "add-tags",
       description: `Add tags to notes in frontmatter and/or content.
 
+For best organization, use hierarchical tags with forward slashes (e.g., 'ml/training/supervised', 'project/docs/api') 
+which create a collapsible tree structure in Obsidian's tag pane. Also supports hyphens and underscores.
+
 Examples:
-- Add to both locations: { "files": ["note.md"], "tags": ["status/active"] }
-- Add to frontmatter only: { "files": ["note.md"], "tags": ["project/docs"], "location": "frontmatter" }
+- Hierarchical tags: { "files": ["note.md"], "tags": ["ml/ops/training", "project/docs"] }
+- Add to frontmatter only: { "files": ["note.md"], "tags": ["data-processing"], "location": "frontmatter" }
 - Add to start of content: { "files": ["note.md"], "tags": ["type/meeting"], "location": "content", "position": "start" }`,
       schema,
       handler: async (args, vaultPath, _vaultName) => {

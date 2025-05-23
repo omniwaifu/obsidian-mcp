@@ -75,8 +75,8 @@ export function getRelatedTags(
 
 /**
  * Validates a tag format
- * Allows: #tag, tag, tag/subtag, project/active
- * Disallows: empty strings, spaces, special characters except '/'
+ * Allows: #tag, tag, tag/subtag, project/active, with-hyphens, with_underscores
+ * Disallows: empty strings, spaces, special characters except '/', '_', '-'
  */
 export function validateTag(tag: string): boolean {
   // Remove leading # if present
@@ -85,8 +85,9 @@ export function validateTag(tag: string): boolean {
   // Check if tag is empty
   if (!tag) return false;
 
-  // Basic tag format validation
-  const TAG_REGEX = /^[a-zA-Z0-9]+(\/[a-zA-Z0-9]+)*$/;
+  // Updated tag format validation to match extractTags pattern
+  // Allows: letters, numbers, forward slashes, underscores, hyphens
+  const TAG_REGEX = /^[a-zA-Z0-9_-]+(\/[a-zA-Z0-9_-]+)*$/;
   return TAG_REGEX.test(tag);
 }
 

@@ -213,26 +213,46 @@ export function createGetDailyNotePathTool(vaults: Map<string, string>) {
   return createTool<GetDailyNotePathInput>(
     {
       name: "get-daily-note-path",
-      description: `Calculates the expected relative path for a daily note based on the Daily Notes core plugin settings (.obsidian/daily-notes.json).\n\nYou can specify a date (ISO 8601 or YYYY-MM-DD) to get the path for that day, or omit it to get today's path.\n\nExamples:\n- Get today's path: { "vault": "my_vault" }\n- Get path for a specific date: { "vault": "my_vault", "date": "2024-06-01" }`,
+      description: `Calculates the expected relative path for a daily note based on the Daily Notes core plugin settings (.obsidian/daily-notes.json).\\n\\nYou can specify a date (ISO 8601 or YYYY-MM-DD) to get the path for that day, or omit it to get today\'s path.\\n\\nExamples:\\n- Get today\'s path: { "vault": "my_vault" }\\n- Get path for a specific date: { "vault": "my_vault", "date": "2024-06-01" }`,
       schema,
       handler: async (args, vaultPath, vaultName) => {
-        // --- DEBUG LOG ---
-        // console.error(`[DEBUG] get-daily-note-path Handler - Received vaultName: ${vaultName}, vaultPath: ${vaultPath}`);
-        // --- END DEBUG LOG ---
         try {
-          // Pass vaultName to the core logic function for caching
+          // getDailyNotePath returns { path: string } on success or throws McpError
           const result = await getDailyNotePath(args, vaultPath, vaultName);
-          // Corrected: Format result into a string for createToolResponse
-          return createToolResponse(`Daily note path: ${result.path}`);
+          // Return a structured success object for the capability layer
+          return {
+            success: true,
+            path: result.path,
+            message: `Successfully determined daily note path: ${result.path}`,
+          };
         } catch (error: any) {
+          let errorToThrow: McpError;
           if (error instanceof McpError) {
-            throw error;
+            // Log the specific McpError before re-throwing
+            console.error(
+              `[GetDailyNotePathTool] McpError for vault \'${args.vault}\' - Code: ${error.code}, Message: ${error.message}, Details: ${JSON.stringify(error.details)}`,
+            );
+            errorToThrow = error; // Re-throw the original McpError
+          } else {
+            // For other unexpected errors, log them and convert to a standard McpError
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            console.error(
+              `[GetDailyNotePathTool] Unexpected error for vault \'${args.vault}\': ${errorMessage}`,
+              error, // Log the full error object for server-side inspection
+            );
+            errorToThrow = new McpError(
+              ErrorCode.InternalError,
+              `Unexpected error in get-daily-note-path for vault \'${args.vault}\': ${errorMessage}`,
+              {
+                originalErrorStack:
+                  error instanceof Error ? error.stack : undefined,
+              },
+            );
           }
-          console.error(
-            `Error getting daily note path for vault '${args.vault}':`,
-            error,
-          );
-          throw handleFsError(error, "get daily note path");
+          // The MCP framework will catch this thrown error and formulate
+          // a { success: false, error: { code, message, details } } response.
+          throw errorToThrow;
         }
       },
     },

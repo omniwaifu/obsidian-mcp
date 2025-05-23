@@ -26,6 +26,10 @@ describe("Tag Utilities", () => {
       expect(validateTag("#with/hierarchy")).toBe(true);
       expect(validateTag("tag123")).toBe(true);
       expect(validateTag("a/b/c/d1")).toBe(true);
+      expect(validateTag("with-hyphens")).toBe(true);
+      expect(validateTag("with_underscores")).toBe(true);
+      expect(validateTag("ml/ops/data-processing")).toBe(true);
+      expect(validateTag("#tag_with-mixed_formats")).toBe(true);
     });
 
     it("should return false for invalid tags", () => {
@@ -33,11 +37,12 @@ describe("Tag Utilities", () => {
       expect(validateTag("#")).toBe(false);
       expect(validateTag("with space")).toBe(false);
       expect(validateTag("#with space")).toBe(false);
-      expect(validateTag("special-char")).toBe(false);
       expect(validateTag("tag!")).toBe(false);
       expect(validateTag("/leading")).toBe(false);
       expect(validateTag("trailing/")).toBe(false);
       expect(validateTag("double//slash")).toBe(false);
+      expect(validateTag("tag@symbol")).toBe(false);
+      expect(validateTag("tag.dot")).toBe(false);
     });
   });
 

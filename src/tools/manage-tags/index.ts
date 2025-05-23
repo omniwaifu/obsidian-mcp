@@ -37,7 +37,7 @@ const schema = z
       .min(1, "At least one tag must be specified")
       .refine(
         (tags) => tags.every(validateTag),
-        "Invalid tag format. Tags must contain only letters, numbers, and forward slashes for hierarchy.",
+        "Invalid tag format. Tags can contain letters, numbers, hyphens, underscores, and forward slashes for hierarchy (e.g., 'ml/ops/training', 'data-processing', 'ml_ops').",
       ),
     options: z
       .object({
