@@ -89,7 +89,7 @@ async function getDailyNotePath(
   // Read daily notes configuration
   const configFilePath = path.join(vaultPath, ".obsidian", "daily-notes.json");
   let config: DailyNotesConfig;
-  
+
   try {
     const content = await fs.readFile(configFilePath, "utf8");
     config = JSON.parse(content) as DailyNotesConfig;
@@ -136,7 +136,7 @@ async function getDailyNotePath(
       // Try to parse as-is for other formats
       targetDate = new Date(args.date);
     }
-    
+
     if (isNaN(targetDate.getTime())) {
       throw new McpError(
         ErrorCode.InvalidParams,
@@ -159,9 +159,7 @@ async function getDailyNotePath(
   }
 
   // Construct the final path
-  const finalPath = folder 
-    ? path.join(folder, formattedDate)
-    : formattedDate;
+  const finalPath = folder ? path.join(folder, formattedDate) : formattedDate;
 
   // Ensure the file has a markdown extension and return the path directly
   return ensureMarkdownExtension(finalPath);
@@ -194,7 +192,8 @@ Examples:
           if (error instanceof McpError) {
             throw error;
           } else {
-            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
             throw new McpError(
               ErrorCode.InternalError,
               `Unexpected error in get-daily-note-path for vault '${args.vault}': ${errorMessage}`,

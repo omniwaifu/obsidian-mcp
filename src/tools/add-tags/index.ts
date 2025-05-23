@@ -37,7 +37,9 @@ const schema = z
         (tags) => tags.every(validateTag),
         "Invalid tag format. Tags can contain letters, numbers, hyphens, underscores, and forward slashes for hierarchy (e.g., 'ml/ops/training', 'data-processing', 'ml_ops').",
       )
-      .describe("Array of tags to add. Use hierarchical tags with slashes for best organization (e.g., 'ml/ops/training', 'project/docs/api'). Also supports hyphens and underscores."),
+      .describe(
+        "Array of tags to add. Use hierarchical tags with slashes for best organization (e.g., 'ml/ops/training', 'project/docs/api'). Also supports hyphens and underscores.",
+      ),
     location: z
       .enum(["frontmatter", "content", "both"])
       .optional()
